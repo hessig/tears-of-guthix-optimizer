@@ -16,7 +16,8 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 
 /**
- * Above Juna: whether this world moves its streams in the best order, and when to enter.
+ * Above Juna: whether this world moves its streams in the best order, when to enter, and when the next
+ * game can be played.
  */
 class JunaOverlay extends Overlay
 {
@@ -100,7 +101,22 @@ class JunaOverlay extends Overlay
 			}
 		}
 
-		if (config.showStoryTiming() && optimal && !plugin.playerInRoom())
+		Long unlock = plugin.unlockAt();
+		String requirement = plugin.requirementText();
+		if (config.showNextGame() && unlock != null)
+		{
+			texts.add("Next game in " + Eligibility.formatRemaining(unlock - System.currentTimeMillis()));
+			colours.add(Color.ORANGE);
+		}
+		if (config.showRequirement() && requirement != null)
+		{
+			texts.add(requirement);
+			colours.add(Color.ORANGE);
+		}
+
+		// Story timing only matters when the player can actually play
+		boolean canPlay = unlock == null && requirement == null;
+		if (config.showStoryTiming() && optimal && canPlay && !plugin.playerInRoom())
 		{
 			String cue = continueCue(plugin);
 			if (cue != null)

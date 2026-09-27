@@ -77,6 +77,15 @@ public class TogOptimizerPlugin extends Plugin
 	@Inject
 	private ContinueOverlay continueOverlay;
 
+	@Inject
+	private ConfigManager configManager;
+
+	// Per-account records of when the next game unlocks and the experience when the last one ended
+	private static final String UNLOCK_AT_KEY = "unlockAt";
+	private static final String XP_AT_LAST_GAME_KEY = "xpAtLastGame";
+	private int lastTears;
+	// The reward experience lands as a game ends, so it's recorded a few ticks later
+	private int recordXpTick = -1;
 	private String lastDialogue = "";
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
@@ -328,6 +337,16 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
+		if (event.getVarbitId() == VarbitID.TOG_TEARS_COLLECTED)
+		{
+			// The count resets when the game ends and the reward is given
+			if (event.getValue() == 0 && lastTears > 0)
+			{
+				gameEnded();
+			}
+			lastTears = event.getValue();
+		}
+
 		// Logged so a real game shows which of these track time left, collecting, and tears
 		if (config.debugLogging() && isTogVariable(event))
 		{
@@ -346,6 +365,13 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		if (recordXpTick >= 0 && client.getTickCount() >= recordXpTick)
+		{
+			recordXpTick = -1;
+			configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, client.getOverallExperience());
+		}
+
+
 		if (!inCave())
 		{
 			plan = null;
@@ -433,8 +459,19 @@ public class TogOptimizerPlugin extends Plugin
 		waitTicks = preview.getWaitTicks();
 	}
 
+	private void gameEnded()
+	{
+		long now = System.currentTimeMillis();
+		configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY, Eligibility.unlockAfterGame(now));
+		recordXpTick = client.getTickCount() + 3;
+		if (config.debugLogging())
+		{
+			log.info("togoptimizer game ended tick={} unlockAt={}", client.getTickCount(), Eligibility.unlockAfterGame(now));
+		}
+	}
+
 	/**
-	 * Watches dialogue for Juna's last line, the one that lets the player into the cave.
+	 * Watches dialogue for Juna saying how many days until the player can play again.
 	 */
 	private void readDialogue()
 	{
@@ -457,6 +494,12 @@ public class TogOptimizerPlugin extends Plugin
 		{
 			log.info("togoptimizer dialogue tick={} text={}", client.getTickCount(), text);
 		}
+		Integer days = Eligibility.daysFromJuna(text);
+		if (days != null)
+		{
+			configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY,
+				Eligibility.unlockInDays(days, System.currentTimeMillis()));
+		}
 	}
 
 	@Nullable
@@ -468,6 +511,27 @@ public class TogOptimizerPlugin extends Plugin
 			return null;
 		}
 		return Text.removeTags(widget.getText().replace("<br>", " "));
+	}
+
+	/**
+	 * @return when this account can next play, or null if unknown or already possible
+	 */
+	@Nullable
+	Long unlockAt()
+	{
+		Long unlock = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY, Long.class);
+		return unlock == null || unlock <= System.currentTimeMillis() ? null : unlock;
+	}
+
+	/**
+	 * @return the quest point or experience still needed to play again, or null if met
+	 */
+	@Nullable
+	String requirementText()
+	{
+		Long xpAtLastGame = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, Long.class);
+		return Eligibility.requirement(client.getVarbitValue(VarbitID.TOG_QP_BEFORE_RETURN),
+			client.getVarpValue(VarPlayerID.QP), client.getOverallExperience(), xpAtLastGame);
 	}
 
 	private static String describe(@Nullable Planner.Plan plan)

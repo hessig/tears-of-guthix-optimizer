@@ -112,6 +112,31 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "showNextGame",
+		name = "Next game countdown",
+		description = "Shows above Juna how long until you can play again, from your last game or from what Juna "
+			+ "last told you.",
+		position = 2,
+		section = juna
+	)
+	default boolean showNextGame()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showRequirement",
+		name = "Quest point or XP needed",
+		description = "Shows above Juna the quest point or experience you still need to gain before playing again.",
+		position = 3,
+		section = juna
+	)
+	default boolean showRequirement()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "debugLogging",
 		name = "Debug logging",
 		description = "Logs stream movements, the minigame's state and the plugin's estimates to the client log.",
