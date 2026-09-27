@@ -5,6 +5,7 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.GameObject;
@@ -16,8 +17,8 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayUtil;
 
 /**
- * Above Juna: whether this world moves its streams in the best order, when to enter, and when the next
- * game can be played.
+ * Above Juna: whether this world moves its streams in the best order, better worlds if not, and when
+ * to tell a story so the game starts at a good time.
  */
 class JunaOverlay extends Overlay
 {
@@ -64,6 +65,22 @@ class JunaOverlay extends Overlay
 		return cue.startsWith("Continue in") ? Color.WHITE : Color.LIGHT_GRAY;
 	}
 
+	private void addHopHint(List<String> texts, List<Color> colours, int world)
+	{
+		String hotkey = plugin.hopHotkeyText();
+		if (hotkey != null)
+		{
+			texts.add(hotkey + " to hop to " + world);
+			colours.add(Color.YELLOW);
+		}
+	}
+
+	private String describeWorld(int world)
+	{
+		Integer ping = plugin.pingOf(world);
+		return ping == null ? String.valueOf(world) : world + " (" + ping + " ms)";
+	}
+
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
@@ -93,11 +110,26 @@ class JunaOverlay extends Overlay
 			{
 				texts.add("Best stream order (gggbbb)");
 				colours.add(Color.GREEN);
+				Integer faster = config.fetchWorldList() ? plugin.fasterWorld() : null;
+				if (faster != null)
+				{
+					texts.add("Faster gggbbb world: " + describeWorld(faster) + ", this world "
+						+ plugin.pingOf(plugin.currentWorld()) + " ms");
+					colours.add(Color.WHITE);
+					addHopHint(texts, colours, faster);
+				}
 			}
 			else
 			{
 				texts.add("Stream order " + order + ", not gggbbb");
 				colours.add(Color.RED);
+				List<Integer> worlds = config.fetchWorldList() ? plugin.suggestedWorlds() : List.of();
+				if (!worlds.isEmpty())
+				{
+					texts.add("gggbbb worlds: " + worlds.stream().map(this::describeWorld).collect(Collectors.joining(", ")));
+					colours.add(Color.WHITE);
+					addHopHint(texts, colours, worlds.get(0));
+				}
 			}
 		}
 

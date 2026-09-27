@@ -1,10 +1,13 @@
 package com.togoptimizer;
 
 import java.awt.Color;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 
 @ConfigGroup(TogOptimizerConfig.GROUP)
 public interface TogOptimizerConfig extends Config
@@ -134,6 +137,36 @@ public interface TogOptimizerConfig extends Config
 	default boolean showRequirement()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+		keyName = "fetchWorldList",
+		name = "Look up worlds online",
+		description = "Reads the list of worlds and their stream orders reported by ToG Crowdsourcing users "
+			+ "(togcrowdsourcing.com), to check this world before the streams have been seen and to suggest better "
+			+ "ones, nearest you first. This sends your IP address to that site. Nothing about your account is sent.",
+		warning = "Enabling this setting reads data from togcrowdsourcing.com, a third-party site not controlled or "
+			+ "verified by the RuneLite developers, which will see your IP address. No account information is shared. "
+			+ "Continue?",
+		position = 4,
+		section = juna
+	)
+	default boolean fetchWorldList()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "hopHotkey",
+		name = "Hop to best world",
+		description = "Hops to the nearest world with the best stream order. Only works in the Tears of Guthix cave, "
+			+ "outside the wall room, while on a world without the best order, and needs Look up worlds online.",
+		position = 5,
+		section = juna
+	)
+	default Keybind hopHotkey()
+	{
+		return new Keybind(KeyEvent.VK_UP, InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK);
 	}
 
 	@ConfigItem(

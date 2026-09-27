@@ -2,10 +2,14 @@ package com.togoptimizer;
 
 import com.google.inject.Provides;
 import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
@@ -14,6 +18,7 @@ import net.runelite.api.Player;
 import net.runelite.api.TileObject;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
@@ -30,12 +35,24 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.game.WorldService;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
+import net.runelite.client.util.WorldUtil;
+import net.runelite.http.api.worlds.World;
+import net.runelite.http.api.worlds.WorldResult;
+import net.runelite.http.api.worlds.WorldType;
 
 @Slf4j
 @PluginDescriptor(
@@ -58,6 +75,9 @@ public class TogOptimizerPlugin extends Plugin
 	private static final int ROLLOUTS = 200;
 	// Ticks from a stream leaving to the player clicking; a real game measured one to three
 	private static final int REACTION = 2;
+	// How much lower another optimal world's ping must be to suggest hopping from an optimal world
+	static final int FASTER_BY_MS = 10;
+	private static final Set<WorldType> SUGGESTABLE = EnumSet.of(WorldType.MEMBERS, WorldType.LEGACY_ONLY, WorldType.EOC_ONLY);
 
 	@Inject
 	private Client client;
@@ -78,7 +98,34 @@ public class TogOptimizerPlugin extends Plugin
 	private ContinueOverlay continueOverlay;
 
 	@Inject
+	private WorldList worldList;
+
+	@Inject
+	private WorldService worldService;
+
+	@Inject
+	private WorldPinger pinger;
+
+	@Inject
 	private ConfigManager configManager;
+
+	@Inject
+	private KeyManager keyManager;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	private final HotkeyListener hopListener = new HotkeyListener(() -> config.hopHotkey())
+	{
+		@Override
+		public void hotkeyPressed()
+		{
+			clientThread.invoke(TogOptimizerPlugin.this::hopToBestWorld);
+		}
+	};
 
 	// Per-account records of when the next game unlocks and the experience when the last one ended
 	private static final String UNLOCK_AT_KEY = "unlockAt";
@@ -90,6 +137,11 @@ public class TogOptimizerPlugin extends Plugin
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
 	private boolean junasLastLine;
+
+	// A hop waiting for the world switcher to open, as the game needs it open to hop
+	@Nullable
+	private net.runelite.api.World hopTarget;
+	private int hopAttempts;
 
 	@Getter
 	private final StreamTracker tracker = new StreamTracker();
@@ -135,6 +187,7 @@ public class TogOptimizerPlugin extends Plugin
 		overlayManager.add(wallOverlay);
 		overlayManager.add(junaOverlay);
 		overlayManager.add(continueOverlay);
+		keyManager.registerKeyListener(hopListener);
 	}
 
 	@Override
@@ -143,15 +196,32 @@ public class TogOptimizerPlugin extends Plugin
 		overlayManager.remove(wallOverlay);
 		overlayManager.remove(junaOverlay);
 		overlayManager.remove(continueOverlay);
+		keyManager.unregisterKeyListener(hopListener);
+		hopTarget = null;
 		tracker.reset();
 		Arrays.fill(wallObjects, null);
 		Arrays.fill(baseWalls, null);
+		worldList.clear();
+		pinger.shutDown();
 		preview = null;
 		plan = null;
 		shownBest = -1;
 		waitTicks = -1;
 		collectingWall = -1;
 		juna = null;
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!TogOptimizerConfig.GROUP.equals(event.getGroup()))
+		{
+			return;
+		}
+		if (!config.fetchWorldList())
+		{
+			worldList.clear();
+		}
 	}
 
 	@Subscribe
@@ -163,6 +233,11 @@ public class TogOptimizerPlugin extends Plugin
 			// The streams are sent again after a load, with no way to tell how long they have left
 			tracker.reset();
 			preview = null;
+			if (state == GameState.LOGIN_SCREEN)
+			{
+				// Pings are kept for the whole login, as the player can't have moved until they log out
+				pinger.clear();
+			}
 			Arrays.fill(wallObjects, null);
 			Arrays.fill(baseWalls, null);
 			plan = null;
@@ -365,6 +440,7 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		continueHop();
 		if (recordXpTick >= 0 && client.getTickCount() >= recordXpTick)
 		{
 			recordXpTick = -1;
@@ -382,6 +458,13 @@ public class TogOptimizerPlugin extends Plugin
 		}
 
 		readDialogue();
+
+		// Only contact the third-party site at Tears of Guthix itself: Juna only exists in its cave, while
+		// the map region also covers part of the Lumbridge Swamp Caves
+		if (config.fetchWorldList() && juna != null)
+		{
+			worldList.refreshIfStale();
+		}
 
 		int tick = client.getTickCount();
 		if (!tracker.isComplete())
@@ -457,6 +540,123 @@ public class TogOptimizerPlugin extends Plugin
 		plan = preview.getPlan();
 		shownBest = preview.getShown();
 		waitTicks = preview.getWaitTicks();
+	}
+
+	/**
+	 * Hops to the nearest optimal world, when the player is at Juna on a world that isn't one.
+	 */
+	private void hopToBestWorld()
+	{
+		String reason = null;
+		Integer target = null;
+		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
+		if (!inCave() || juna == null)
+		{
+			reason = "Hop to best world only works in the Tears of Guthix cave.";
+		}
+		else if (playerInRoom())
+		{
+			reason = "Hop to best world is disabled during a game.";
+		}
+		else if (optimal)
+		{
+			target = config.fetchWorldList() ? fasterWorld() : null;
+			if (target == null)
+			{
+				reason = "This world already has the best stream order.";
+			}
+		}
+		else if (!config.fetchWorldList())
+		{
+			reason = "Hop to best world needs Look up worlds online turned on.";
+		}
+		else
+		{
+			List<Integer> worlds = suggestedWorlds();
+			if (worlds.isEmpty())
+			{
+				reason = "There's no better world to suggest yet.";
+			}
+			else
+			{
+				target = worlds.get(0);
+			}
+		}
+		if (reason != null)
+		{
+			chat(reason);
+			return;
+		}
+
+		WorldResult result = worldService.getWorlds();
+		World world = result == null ? null : result.findWorld(target);
+		if (world == null)
+		{
+			return;
+		}
+		net.runelite.api.World rsWorld = client.createWorld();
+		rsWorld.setActivity(world.getActivity());
+		rsWorld.setAddress(world.getAddress());
+		rsWorld.setId(world.getId());
+		rsWorld.setPlayerCount(world.getPlayers());
+		rsWorld.setLocation(world.getLocation());
+		rsWorld.setTypes(WorldUtil.toWorldTypes(world.getTypes()));
+		hopTarget = rsWorld;
+		hopAttempts = 0;
+		chat(optimal
+			? "Hopping to world " + world.getId() + ", which also has the best stream order and a lower ping."
+			: "Hopping to world " + world.getId() + ", which has the best stream order.");
+	}
+
+	/**
+	 * Hops once the world switcher is open, as World Hopper does, giving up after a few ticks.
+	 */
+	private void continueHop()
+	{
+		if (hopTarget == null)
+		{
+			return;
+		}
+		if (client.getWidget(InterfaceID.Worldswitcher.BUTTONS) == null)
+		{
+			client.openWorldHopper();
+			if (++hopAttempts >= 3)
+			{
+				chat("Couldn't open the world switcher to hop.");
+				hopTarget = null;
+			}
+			return;
+		}
+		client.hopToWorld(hopTarget);
+		hopTarget = null;
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() == ChatMessageType.GAMEMESSAGE
+			&& event.getMessage().equals("Please finish what you're doing before using the World Switcher."))
+		{
+			hopTarget = null;
+		}
+	}
+
+	private void chat(String message)
+	{
+		chatMessageManager.queue(QueuedMessage.builder()
+			.type(ChatMessageType.CONSOLE)
+			.runeLiteFormattedMessage("ToG Optimizer: " + message)
+			.build());
+	}
+
+	/**
+	 * @return the hop hotkey as shown to the player, or null if none is set
+	 */
+	@Nullable
+	String hopHotkeyText()
+	{
+		Keybind key = config.hopHotkey();
+		return key == null || Keybind.NOT_SET.equals(key) ? null : key.toString();
 	}
 
 	private void gameEnded()
@@ -573,14 +773,19 @@ public class TogOptimizerPlugin extends Plugin
 		return client.getLocalPlayer().getWorldLocation().getRegionID() == TOG_REGION;
 	}
 
+	int currentWorld()
+	{
+		return client.getWorld();
+	}
+
 	boolean playerInRoom()
 	{
 		return client.getLocalPlayer() != null && inRoom(client.getLocalPlayer().getWorldLocation());
 	}
 
 	/**
-	 * Only the blue streams' timings are needed, so this is known as soon as the blues have each moved
-	 * once.
+	 * Only the blue streams' timings are needed, so after a hop this is known as soon as the blues have
+	 * each moved once, sooner than the full stream order.
 	 *
 	 * @return 0 if now is a good time to continue past Juna's last line, the ticks to wait otherwise, or
 	 * -1 if unknown
@@ -606,6 +811,37 @@ public class TogOptimizerPlugin extends Plugin
 		return firstBlue < 0 ? -1 : StoryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
 	}
 
+	@Nullable
+	Integer pingOf(int world)
+	{
+		return pinger.pingOf(world);
+	}
+
+	/**
+	 * On an optimal world, another optimal world with a clearly lower ping, as a lower ping makes clicks
+	 * land on the intended tick more often.
+	 *
+	 * @return that world, or null if there's none or the pings aren't measured yet
+	 */
+	@Nullable
+	Integer fasterWorld()
+	{
+		WorldResult worlds = worldService.getWorlds();
+		World current = worlds == null ? null : worlds.findWorld(client.getWorld());
+		if (current == null)
+		{
+			return null;
+		}
+		pinger.pingOnce(current.getId(), current.getAddress());
+		List<Integer> candidates = suggestedWorlds();
+		if (candidates.isEmpty())
+		{
+			return null;
+		}
+		int best = candidates.get(0);
+		return WorldPinger.isFaster(pinger.pingOf(best), pinger.pingOf(current.getId()), FASTER_BY_MS) ? best : null;
+	}
+
 	private static boolean inRoom(WorldPoint location)
 	{
 		return location.getX() >= ROOM_MIN_X && location.getX() <= ROOM_MAX_X
@@ -613,11 +849,41 @@ public class TogOptimizerPlugin extends Plugin
 	}
 
 	/**
-	 * @return this world's stream order once the streams have been watched for a cycle, or null
+	 * @return this world's stream order, from the streams if they've been watched for a cycle,
+	 * otherwise from the online list, or null
 	 */
 	@Nullable
 	String worldOrder()
 	{
-		return tracker.getOrder();
+		String seen = tracker.getOrder();
+		if (seen != null)
+		{
+			return seen;
+		}
+		return config.fetchWorldList() ? worldList.orderOf(client.getWorld()) : null;
+	}
+
+	/**
+	 * @return up to three optimal worlds to hop to, nearest first once measured, if the online list is on
+	 */
+	List<Integer> suggestedWorlds()
+	{
+		WorldResult worlds = worldService.getWorlds();
+		if (worlds == null)
+		{
+			return List.of();
+		}
+		int current = client.getWorld();
+		List<Integer> candidates = worldList.optimalWorlds(Integer.MAX_VALUE, id ->
+		{
+			World world = worlds.findWorld(id);
+			return id != current && world != null && world.getTypes().contains(WorldType.MEMBERS)
+				&& SUGGESTABLE.containsAll(world.getTypes());
+		});
+		for (int id : candidates)
+		{
+			pinger.pingOnce(id, worlds.findWorld(id).getAddress());
+		}
+		return WorldPinger.byPing(candidates, pinger::pingOf, 3);
 	}
 }
