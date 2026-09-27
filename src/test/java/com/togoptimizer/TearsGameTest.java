@@ -12,7 +12,39 @@ public class TearsGameTest
 
 	static TearsGame game(String order, int ticks, int reaction, long seed)
 	{
-		return TearsGame.start(order, ticks, ENTRANCE_X, ENTRANCE_Y, reaction, new Random(seed));
+		return start(order, ticks, ENTRANCE_X, ENTRANCE_Y, reaction, new Random(seed));
+	}
+
+	/**
+	 * A game with streams on random walls, starting as the first blue in {@code order} moves, which
+	 * is when the wiki suggests entering.
+	 *
+	 * @param order colours in the order the six streams move each cycle, such as "gggbbb"
+	 */
+	static TearsGame start(String order, int ticks, int startX, int startY, int reaction, Random rng)
+	{
+		TearsGame game = new TearsGame();
+		game.endTick = ticks;
+		game.x = startX;
+		game.y = startY;
+		game.reaction = reaction;
+		game.rng = rng;
+
+		int firstBlue = order.indexOf('b');
+		boolean[] used = new boolean[Walls.COUNT];
+		for (int stream = 0; stream < order.length(); stream++)
+		{
+			int wall;
+			do
+			{
+				wall = rng.nextInt(Walls.COUNT);
+			}
+			while (used[wall]);
+			used[wall] = true;
+			game.colour[wall] = order.charAt(stream) == 'b' ? TearsGame.BLUE : TearsGame.GREEN;
+			game.nextMove[wall] = Math.floorMod(stream - firstBlue, TearsGame.STREAM_LIFE);
+		}
+		return game;
 	}
 
 	@Test

@@ -18,7 +18,7 @@ import net.runelite.client.ui.overlay.OverlayUtil;
 
 /**
  * Above Juna: whether this world moves its streams in the best order, better worlds if not, and when
- * to tell a story so the game starts at a good time.
+ * to enter so the game starts at a good time.
  */
 class JunaOverlay extends Overlay
 {
@@ -68,7 +68,17 @@ class JunaOverlay extends Overlay
 	private void addHopHint(List<String> texts, List<Color> colours, int world)
 	{
 		String hotkey = plugin.hopHotkeyText();
-		if (hotkey != null)
+		if (hotkey == null)
+		{
+			return;
+		}
+		String conflict = plugin.getHotkeyConflict();
+		if (conflict != null)
+		{
+			texts.add(hotkey + " to hop to " + world + " (also used by " + conflict + ")");
+			colours.add(Color.RED);
+		}
+		else
 		{
 			texts.add(hotkey + " to hop to " + world);
 			colours.add(Color.YELLOW);
@@ -110,7 +120,7 @@ class JunaOverlay extends Overlay
 			{
 				texts.add("Best stream order (gggbbb)");
 				colours.add(Color.GREEN);
-				Integer faster = config.fetchWorldList() ? plugin.fasterWorld() : null;
+				Integer faster = plugin.getFasterWorld();
 				if (faster != null)
 				{
 					texts.add("Faster gggbbb world: " + describeWorld(faster) + ", this world "
@@ -123,7 +133,7 @@ class JunaOverlay extends Overlay
 			{
 				texts.add("Stream order " + order + ", not gggbbb");
 				colours.add(Color.RED);
-				List<Integer> worlds = config.fetchWorldList() ? plugin.suggestedWorlds() : List.of();
+				List<Integer> worlds = plugin.getSuggestions();
 				if (!worlds.isEmpty())
 				{
 					texts.add("gggbbb worlds: " + worlds.stream().map(this::describeWorld).collect(Collectors.joining(", ")));
@@ -133,8 +143,8 @@ class JunaOverlay extends Overlay
 			}
 		}
 
-		Long unlock = plugin.unlockAt();
-		String requirement = plugin.requirementText();
+		Long unlock = plugin.getUnlockAt();
+		String requirement = plugin.getRequirement();
 		if (config.showNextGame() && unlock != null)
 		{
 			texts.add("Next game in " + Eligibility.formatRemaining(unlock - System.currentTimeMillis()));
@@ -146,9 +156,9 @@ class JunaOverlay extends Overlay
 			colours.add(Color.ORANGE);
 		}
 
-		// Story timing only matters when the player can actually play
+		// Entry timing only matters when the player can actually play
 		boolean canPlay = unlock == null && requirement == null;
-		if (config.showStoryTiming() && optimal && canPlay && !plugin.playerInRoom())
+		if (config.showEntryTiming() && optimal && canPlay && !plugin.playerInRoom())
 		{
 			String cue = continueCue(plugin);
 			if (cue != null)

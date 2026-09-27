@@ -1,6 +1,8 @@
 package com.togoptimizer;
 
 import com.google.inject.Provides;
+import java.awt.Color;
+import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -24,8 +26,6 @@ import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.GroundObjectDespawned;
-import net.runelite.api.events.GroundObjectSpawned;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.WallObjectDespawned;
@@ -38,6 +38,9 @@ import net.runelite.api.gameval.VarbitID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigDescriptor;
+import net.runelite.client.config.ConfigItemDescriptor;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.Subscribe;
@@ -46,7 +49,9 @@ import net.runelite.client.game.WorldService;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
 import net.runelite.client.util.WorldUtil;
@@ -118,6 +123,9 @@ public class TogOptimizerPlugin extends Plugin
 	@Inject
 	private ChatMessageManager chatMessageManager;
 
+	@Inject
+	private PluginManager pluginManager;
+
 	private final HotkeyListener hopListener = new HotkeyListener(() -> config.hopHotkey())
 	{
 		@Override
@@ -137,6 +145,26 @@ public class TogOptimizerPlugin extends Plugin
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
 	private boolean junasLastLine;
+
+	// The hop hotkey is only listened for in the cave, so it doesn't take the key from anything else
+	private boolean hotkeyActive;
+	// Another enabled plugin with a hotkey setting on the same key, or null
+	@Getter
+	@Nullable
+	private String hotkeyConflict;
+
+	// Juna's lines, worked out once a tick rather than every frame
+	@Getter
+	private List<Integer> suggestions = List.of();
+	@Getter
+	@Nullable
+	private Integer fasterWorld;
+	@Getter
+	@Nullable
+	private Long unlockAt;
+	@Getter
+	@Nullable
+	private String requirement;
 
 	// A hop waiting for the world switcher to open, as the game needs it open to hop
 	@Nullable
@@ -164,7 +192,7 @@ public class TogOptimizerPlugin extends Plugin
 
 	// The stream object currently showing on each wall, for outlining
 	private final DecorativeObject[] wallObjects = new DecorativeObject[Walls.COUNT];
-	// The permanent weeping wall behind each stream, outlined while waiting at an empty wall
+	// The permanent weeping wall behind each stream, whose clickable area marks an empty wall to wait at
 	private final TileObject[] baseWalls = new TileObject[Walls.COUNT];
 	// Ticks left to wait for a blue to land on the player's empty wall, or -1 if not waiting
 	@Getter
@@ -184,10 +212,10 @@ public class TogOptimizerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		clientThread.invoke(this::checkHotkeyConflict);
 		overlayManager.add(wallOverlay);
 		overlayManager.add(junaOverlay);
 		overlayManager.add(continueOverlay);
-		keyManager.registerKeyListener(hopListener);
 	}
 
 	@Override
@@ -196,7 +224,7 @@ public class TogOptimizerPlugin extends Plugin
 		overlayManager.remove(wallOverlay);
 		overlayManager.remove(junaOverlay);
 		overlayManager.remove(continueOverlay);
-		keyManager.unregisterKeyListener(hopListener);
+		setHotkeyActive(false);
 		hopTarget = null;
 		tracker.reset();
 		Arrays.fill(wallObjects, null);
@@ -209,11 +237,23 @@ public class TogOptimizerPlugin extends Plugin
 		waitTicks = -1;
 		collectingWall = -1;
 		juna = null;
+		suggestions = List.of();
+		fasterWorld = null;
 	}
 
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		// Any plugin's hotkey could now clash with ours, so check straight away and warn about a new clash
+		clientThread.invoke(() ->
+		{
+			String before = hotkeyConflict;
+			checkHotkeyConflict();
+			if (hotkeyConflict != null && !hotkeyConflict.equals(before))
+			{
+				chat(ColorUtil.wrapWithColorTag(hopHotkeyText() + " is also used by " + hotkeyConflict + ".", Color.RED));
+			}
+		});
 		if (!TogOptimizerConfig.GROUP.equals(event.getGroup()))
 		{
 			return;
@@ -255,7 +295,6 @@ public class TogOptimizerPlugin extends Plugin
 		{
 			juna = event.getGameObject();
 		}
-		baseWall(event.getGameObject(), true);
 	}
 
 	@Subscribe
@@ -265,19 +304,6 @@ public class TogOptimizerPlugin extends Plugin
 		{
 			juna = null;
 		}
-		baseWall(event.getGameObject(), false);
-	}
-
-	@Subscribe
-	public void onGroundObjectSpawned(GroundObjectSpawned event)
-	{
-		baseWall(event.getGroundObject(), true);
-	}
-
-	@Subscribe
-	public void onGroundObjectDespawned(GroundObjectDespawned event)
-	{
-		baseWall(event.getGroundObject(), false);
 	}
 
 	@Subscribe
@@ -327,7 +353,6 @@ public class TogOptimizerPlugin extends Plugin
 
 	private void wallObject(DecorativeObject object, boolean spawned)
 	{
-		baseWall(object, spawned);
 		int colour = colourOf(object.getId());
 		if (colour == Integer.MIN_VALUE)
 		{
@@ -422,7 +447,7 @@ public class TogOptimizerPlugin extends Plugin
 			lastTears = event.getValue();
 		}
 
-		// Logged so a real game shows which of these track time left, collecting, and tears
+		// The minigame's own state: whether the player is collecting, their tears, and the quest points needed
 		if (config.debugLogging() && isTogVariable(event))
 		{
 			log.info("togoptimizer var tick={} varbit={} varp={} value={}", client.getTickCount(), event.getVarbitId(),
@@ -448,6 +473,7 @@ public class TogOptimizerPlugin extends Plugin
 		}
 
 
+		setHotkeyActive(inCave());
 		if (!inCave())
 		{
 			plan = null;
@@ -458,6 +484,7 @@ public class TogOptimizerPlugin extends Plugin
 		}
 
 		readDialogue();
+		updateJunaLines();
 
 		// Only contact the third-party site at Tears of Guthix itself: Juna only exists in its cave, while
 		// the map region also covers part of the Lumbridge Swamp Caves
@@ -477,10 +504,12 @@ public class TogOptimizerPlugin extends Plugin
 
 		Player player = client.getLocalPlayer();
 		WorldPoint location = player.getWorldLocation();
+		// Nothing on the walls to plan for
+		boolean shown = config.highlightBest() || config.showExpected();
 		if (!inRoom(location))
 		{
 			gameStartTick = -1;
-			if (config.onlyInRoom())
+			if (config.onlyInRoom() || !shown)
 			{
 				preview = null;
 				plan = null;
@@ -502,6 +531,13 @@ public class TogOptimizerPlugin extends Plugin
 			{
 				log.info("togoptimizer game start tick={} questPoints={}", tick, questPoints);
 			}
+		}
+		if (!shown)
+		{
+			plan = null;
+			shownBest = -1;
+			waitTicks = -1;
+			return;
 		}
 
 		TearsGame game = new TearsGame();
@@ -527,6 +563,80 @@ public class TogOptimizerPlugin extends Plugin
 				game.y, collectingWall, client.getVarbitValue(VarbitID.TOG_TEARS_COLLECTED), plan.getBest(),
 				describe(plan));
 		}
+	}
+
+	private void setHotkeyActive(boolean active)
+	{
+		if (active == hotkeyActive)
+		{
+			return;
+		}
+		hotkeyActive = active;
+		if (active)
+		{
+			keyManager.registerKeyListener(hopListener);
+			checkHotkeyConflict();
+		}
+		else
+		{
+			keyManager.unregisterKeyListener(hopListener);
+		}
+	}
+
+	/**
+	 * Looks through the other enabled plugins' hotkey settings for one on the same key as ours. Only
+	 * those settings are read, and only to compare them.
+	 */
+	private void checkHotkeyConflict()
+	{
+		hotkeyConflict = null;
+		Keybind ours = config.hopHotkey();
+		if (ours == null || Keybind.NOT_SET.equals(ours))
+		{
+			return;
+		}
+		for (Plugin other : pluginManager.getPlugins())
+		{
+			if (other == this || !pluginManager.isPluginEnabled(other))
+			{
+				continue;
+			}
+			Config proxy = pluginManager.getPluginConfigProxy(other);
+			if (proxy == null)
+			{
+				continue;
+			}
+			ConfigDescriptor descriptor = configManager.getConfigDescriptor(proxy);
+			for (ConfigItemDescriptor item : descriptor.getItems())
+			{
+				Type type = item.getType();
+				if (!(type instanceof Class) || !Keybind.class.isAssignableFrom((Class<?>) type))
+				{
+					continue;
+				}
+				Keybind theirs = configManager.getConfiguration(descriptor.getGroup().value(), item.getItem().keyName(), type);
+				if (sameKey(ours, theirs))
+				{
+					hotkeyConflict = other.getName();
+					return;
+				}
+			}
+		}
+	}
+
+	static boolean sameKey(Keybind a, @Nullable Keybind b)
+	{
+		return b != null && a.getKeyCode() == b.getKeyCode() && a.getModifiers() == b.getModifiers();
+	}
+
+	private void updateJunaLines()
+	{
+		unlockAt = readUnlockAt();
+		requirement = readRequirement();
+		boolean online = config.fetchWorldList() && juna != null;
+		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
+		suggestions = online && !optimal ? suggestedWorlds() : List.of();
+		fasterWorld = online && optimal ? findFasterWorld() : null;
 	}
 
 	private void previewTick(int tick)
@@ -560,7 +670,7 @@ public class TogOptimizerPlugin extends Plugin
 		}
 		else if (optimal)
 		{
-			target = config.fetchWorldList() ? fasterWorld() : null;
+			target = config.fetchWorldList() ? findFasterWorld() : null;
 			if (target == null)
 			{
 				reason = "This world already has the best stream order.";
@@ -684,7 +794,7 @@ public class TogOptimizerPlugin extends Plugin
 		{
 			text = dialogueText(InterfaceID.Objectbox.TEXT);
 		}
-		junasLastLine = text != null && text.contains(StoryTiming.LAST_LINE);
+		junasLastLine = text != null && text.contains(EntryTiming.LAST_LINE);
 		if (text == null || text.equals(lastDialogue))
 		{
 			return;
@@ -717,7 +827,7 @@ public class TogOptimizerPlugin extends Plugin
 	 * @return when this account can next play, or null if unknown or already possible
 	 */
 	@Nullable
-	Long unlockAt()
+	private Long readUnlockAt()
 	{
 		Long unlock = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY, Long.class);
 		return unlock == null || unlock <= System.currentTimeMillis() ? null : unlock;
@@ -727,7 +837,7 @@ public class TogOptimizerPlugin extends Plugin
 	 * @return the quest point or experience still needed to play again, or null if met
 	 */
 	@Nullable
-	String requirementText()
+	private String readRequirement()
 	{
 		Long xpAtLastGame = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, Long.class);
 		return Eligibility.requirement(client.getVarbitValue(VarbitID.TOG_QP_BEFORE_RETURN),
@@ -807,8 +917,8 @@ public class TogOptimizerPlugin extends Plugin
 				return -1;
 			}
 		}
-		int firstBlue = StoryTiming.firstBlueMove(colour, nextMove);
-		return firstBlue < 0 ? -1 : StoryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
+		int firstBlue = EntryTiming.firstBlueMove(colour, nextMove);
+		return firstBlue < 0 ? -1 : EntryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
 	}
 
 	@Nullable
@@ -824,7 +934,7 @@ public class TogOptimizerPlugin extends Plugin
 	 * @return that world, or null if there's none or the pings aren't measured yet
 	 */
 	@Nullable
-	Integer fasterWorld()
+	private Integer findFasterWorld()
 	{
 		WorldResult worlds = worldService.getWorlds();
 		World current = worlds == null ? null : worlds.findWorld(client.getWorld());
@@ -866,7 +976,7 @@ public class TogOptimizerPlugin extends Plugin
 	/**
 	 * @return up to three optimal worlds to hop to, nearest first once measured, if the online list is on
 	 */
-	List<Integer> suggestedWorlds()
+	private List<Integer> suggestedWorlds()
 	{
 		WorldResult worlds = worldService.getWorlds();
 		if (worlds == null)

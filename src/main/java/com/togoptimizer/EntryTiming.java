@@ -8,10 +8,10 @@ package com.togoptimizer;
  * Simulations found the most tears when the first blue of a cycle moves one tick after the player
  * enters, and within about 1.5 tears of that from one tick before to two after.
  */
-final class StoryTiming
+final class EntryTiming
 {
-	// Ticks from continuing past Juna's last line to the game starting. An estimate from one game, where
-	// the whole story took 15 ticks; to be measured from the debug log.
+	// Ticks from continuing past Juna's last line to the game starting, estimated from one game where the
+	// whole story took 15 ticks. The debug log records both, to refine it.
 	static final int CONTINUE_TICKS = 3;
 	// Her last line before letting the player in
 	static final String LAST_LINE = "I will let you into the cave";
@@ -19,7 +19,7 @@ final class StoryTiming
 	private static final int EARLIEST_ENTRY = -1;
 	private static final int LATEST_ENTRY = 2;
 
-	private StoryTiming()
+	private EntryTiming()
 	{
 	}
 

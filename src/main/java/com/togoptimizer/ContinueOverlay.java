@@ -37,7 +37,7 @@ class ContinueOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		if (!config.showStoryTiming() || plugin.unlockAt() != null || plugin.requirementText() != null)
+		if (!config.showEntryTiming() || plugin.getUnlockAt() != null || plugin.getRequirement() != null)
 		{
 			return null;
 		}

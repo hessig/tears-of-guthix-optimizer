@@ -16,7 +16,7 @@ public interface TogOptimizerConfig extends Config
 
 	@ConfigSection(
 		name = "Juna",
-		description = "What's shown above Juna before a game: the world's stream order and when to start",
+		description = "What's shown above Juna before a game: the world's stream order and when to enter",
 		position = 10
 	)
 	String juna = "juna";
@@ -101,7 +101,7 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "showStoryTiming",
+		keyName = "showEntryTiming",
 		name = "When to enter",
 		description = "Tell Juna a story and stop on her last line, where she says she'll let you into the cave. A "
 			+ "countdown then shows when to continue, so your game starts at a good point in the stream cycle. Shown on "
@@ -109,7 +109,7 @@ public interface TogOptimizerConfig extends Config
 		position = 1,
 		section = juna
 	)
-	default boolean showStoryTiming()
+	default boolean showEntryTiming()
 	{
 		return true;
 	}
@@ -160,7 +160,8 @@ public interface TogOptimizerConfig extends Config
 		keyName = "hopHotkey",
 		name = "Hop to best world",
 		description = "Hops to the nearest world with the best stream order. Only works in the Tears of Guthix cave, "
-			+ "outside the wall room, while on a world without the best order, and needs Look up worlds online.",
+			+ "outside the wall room, while on a world without the best order, and needs Look up worlds online. If "
+			+ "another plugin uses the same hotkey, a warning in chat and the hint above Juna name it.",
 		position = 5,
 		section = juna
 	)
