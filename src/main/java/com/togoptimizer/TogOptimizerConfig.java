@@ -78,8 +78,8 @@ public interface TogOptimizerConfig extends Config
 	@ConfigItem(
 		keyName = "onlyInRoom",
 		name = "Only show in the wall room",
-		description = "Hides the preview shown while you're outside the wall room, which follows a simulated player "
-			+ "on the real streams so you can see how the plugin works before playing.",
+		description = "Hides the preview shown outside the wall room, where the walls show the plugin's advice on the "
+			+ "live streams before you play.",
 		position = 4
 	)
 	default boolean onlyInRoom()

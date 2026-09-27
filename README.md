@@ -1,7 +1,8 @@
 # Tears of Guthix Optimizer
 
 Highlights the best weeping wall in Tears of Guthix, including when to wait at your wall for a blue
-stream to land, using the stream mechanics described on the OSRS Wiki.
+stream to land, using the stream mechanics described on the OSRS Wiki. Above Juna, it also shows
+whether the world has the best stream order, when to enter, and when you can play next.
 
 ![The best wall outlined in blue, with Juna showing the world's stream order below](docs/room.png)
 
@@ -11,8 +12,8 @@ stream to land, using the stream mechanics described on the OSRS Wiki.
   each one moves next.
 - **Wait.** When staying put is better, your wall is outlined in yellow with a countdown of the ticks
   left before it's time to move.
-- **Preview.** Outside the wall room, the highlight follows a simulated player on the real streams, so
-  you can see it working before you play.
+- **Preview.** Outside the wall room, the walls show the plugin's advice on the live streams, so you can
+  see how it works before playing.
 - **Stream order.** Shows above Juna whether the world moves its streams in the best order: green,
   green, green, blue, blue, blue.
 - **When to enter.** Tell Juna a story and stop on her last line. A countdown shows when to continue
