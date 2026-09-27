@@ -12,6 +12,13 @@ public interface TogOptimizerConfig extends Config
 	String GROUP = "togoptimizer";
 
 	@ConfigSection(
+		name = "Juna",
+		description = "What's shown above Juna before a game: the world's stream order and when to start",
+		position = 10
+	)
+	String juna = "juna";
+
+	@ConfigSection(
 		name = "Debug",
 		description = "Tools for testing the plugin and reporting problems",
 		position = 20,
@@ -75,6 +82,33 @@ public interface TogOptimizerConfig extends Config
 	default boolean onlyInRoom()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+		keyName = "showWorldStatus",
+		name = "World status above Juna",
+		description = "Shows above Juna whether this world moves its streams green, green, green, blue, blue, blue, "
+			+ "the order that makes green tears easiest to avoid.",
+		position = 0,
+		section = juna
+	)
+	default boolean showWorldStatus()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showStoryTiming",
+		name = "When to enter",
+		description = "Tell Juna a story and stop on her last line, where she says she'll let you into the cave. A "
+			+ "countdown then shows when to continue, so your game starts at a good point in the stream cycle. Shown on "
+			+ "worlds with the best stream order.",
+		position = 1,
+		section = juna
+	)
+	default boolean showStoryTiming()
+	{
+		return true;
 	}
 
 	@ConfigItem(

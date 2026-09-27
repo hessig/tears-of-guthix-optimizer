@@ -8,9 +8,11 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
+import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.TileObject;
+import net.runelite.api.widgets.Widget;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
@@ -24,6 +26,7 @@ import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
@@ -32,6 +35,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.Text;
 
 @Slf4j
 @PluginDescriptor(
@@ -67,6 +71,17 @@ public class TogOptimizerPlugin extends Plugin
 	@Inject
 	private WallOverlay wallOverlay;
 
+	@Inject
+	private JunaOverlay junaOverlay;
+
+	@Inject
+	private ContinueOverlay continueOverlay;
+
+	private String lastDialogue = "";
+	// Whether Juna's last line, the one that lets the player in, is on screen
+	@Getter
+	private boolean junasLastLine;
+
 	@Getter
 	private final StreamTracker tracker = new StreamTracker();
 	private final Planner planner = new Planner(ROLLOUTS, HORIZON);
@@ -94,6 +109,11 @@ public class TogOptimizerPlugin extends Plugin
 	@Getter
 	private int waitTicks = -1;
 
+	// Juna is scenery rather than an NPC
+	@Getter
+	@Nullable
+	private GameObject juna;
+
 	@Provides
 	TogOptimizerConfig provideConfig(ConfigManager configManager)
 	{
@@ -104,12 +124,16 @@ public class TogOptimizerPlugin extends Plugin
 	protected void startUp()
 	{
 		overlayManager.add(wallOverlay);
+		overlayManager.add(junaOverlay);
+		overlayManager.add(continueOverlay);
 	}
 
 	@Override
 	protected void shutDown()
 	{
 		overlayManager.remove(wallOverlay);
+		overlayManager.remove(junaOverlay);
+		overlayManager.remove(continueOverlay);
 		tracker.reset();
 		Arrays.fill(wallObjects, null);
 		Arrays.fill(baseWalls, null);
@@ -118,6 +142,7 @@ public class TogOptimizerPlugin extends Plugin
 		shownBest = -1;
 		waitTicks = -1;
 		collectingWall = -1;
+		juna = null;
 	}
 
 	@Subscribe
@@ -142,12 +167,20 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onGameObjectSpawned(GameObjectSpawned event)
 	{
+		if (event.getGameObject().getId() == ObjectID.TOG_JUNA)
+		{
+			juna = event.getGameObject();
+		}
 		baseWall(event.getGameObject(), true);
 	}
 
 	@Subscribe
 	public void onGameObjectDespawned(GameObjectDespawned event)
 	{
+		if (event.getGameObject() == juna)
+		{
+			juna = null;
+		}
 		baseWall(event.getGameObject(), false);
 	}
 
@@ -322,6 +355,8 @@ public class TogOptimizerPlugin extends Plugin
 			return;
 		}
 
+		readDialogue();
+
 		int tick = client.getTickCount();
 		if (!tracker.isComplete())
 		{
@@ -398,6 +433,43 @@ public class TogOptimizerPlugin extends Plugin
 		waitTicks = preview.getWaitTicks();
 	}
 
+	/**
+	 * Watches dialogue for Juna's last line, the one that lets the player into the cave.
+	 */
+	private void readDialogue()
+	{
+		String text = dialogueText(InterfaceID.ChatLeft.TEXT);
+		if (text == null)
+		{
+			text = dialogueText(InterfaceID.Messagebox.TEXT);
+		}
+		if (text == null)
+		{
+			text = dialogueText(InterfaceID.Objectbox.TEXT);
+		}
+		junasLastLine = text != null && text.contains(StoryTiming.LAST_LINE);
+		if (text == null || text.equals(lastDialogue))
+		{
+			return;
+		}
+		lastDialogue = text;
+		if (config.debugLogging())
+		{
+			log.info("togoptimizer dialogue tick={} text={}", client.getTickCount(), text);
+		}
+	}
+
+	@Nullable
+	private String dialogueText(int widgetId)
+	{
+		Widget widget = client.getWidget(widgetId);
+		if (widget == null || widget.isHidden() || widget.getText() == null)
+		{
+			return null;
+		}
+		return Text.removeTags(widget.getText().replace("<br>", " "));
+	}
+
 	private static String describe(@Nullable Planner.Plan plan)
 	{
 		if (plan == null)
@@ -437,9 +509,51 @@ public class TogOptimizerPlugin extends Plugin
 		return client.getLocalPlayer().getWorldLocation().getRegionID() == TOG_REGION;
 	}
 
+	boolean playerInRoom()
+	{
+		return client.getLocalPlayer() != null && inRoom(client.getLocalPlayer().getWorldLocation());
+	}
+
+	/**
+	 * Only the blue streams' timings are needed, so this is known as soon as the blues have each moved
+	 * once.
+	 *
+	 * @return 0 if now is a good time to continue past Juna's last line, the ticks to wait otherwise, or
+	 * -1 if unknown
+	 */
+	int ticksUntilContinue()
+	{
+		if (!StreamTracker.OPTIMAL_ORDER.equals(worldOrder()))
+		{
+			return -1;
+		}
+		int[] colour = new int[Walls.COUNT];
+		int[] nextMove = new int[Walls.COUNT];
+		for (int wall = 0; wall < Walls.COUNT; wall++)
+		{
+			colour[wall] = tracker.colour(wall);
+			nextMove[wall] = tracker.nextMove(wall);
+			if (colour[wall] == TearsGame.BLUE && nextMove[wall] < 0)
+			{
+				return -1;
+			}
+		}
+		int firstBlue = StoryTiming.firstBlueMove(colour, nextMove);
+		return firstBlue < 0 ? -1 : StoryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
+	}
+
 	private static boolean inRoom(WorldPoint location)
 	{
 		return location.getX() >= ROOM_MIN_X && location.getX() <= ROOM_MAX_X
 			&& location.getY() >= ROOM_MIN_Y && location.getY() <= ROOM_MAX_Y;
+	}
+
+	/**
+	 * @return this world's stream order once the streams have been watched for a cycle, or null
+	 */
+	@Nullable
+	String worldOrder()
+	{
+		return tracker.getOrder();
 	}
 }
