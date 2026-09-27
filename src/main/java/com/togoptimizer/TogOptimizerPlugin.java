@@ -57,7 +57,7 @@ import net.runelite.http.api.worlds.WorldType;
 @Slf4j
 @PluginDescriptor(
 	name = "Tears of Guthix Optimizer",
-	description = "ToG: highlights the best weeping wall to collect from, and when to wait for a blue stream",
+	description = "Highlights the best weeping wall, when to wait, and when to enter, with world order checks and a next-game countdown",
 	tags = {"tog", "tears", "guthix", "tears of guthix", "weeping wall", "juna", "minigame"}
 )
 public class TogOptimizerPlugin extends Plugin
