@@ -65,26 +65,6 @@ class JunaOverlay extends Overlay
 		return cue.startsWith("Continue in") ? Color.WHITE : Color.LIGHT_GRAY;
 	}
 
-	private void addHopHint(List<String> texts, List<Color> colours, int world)
-	{
-		String hotkey = plugin.hopHotkeyText();
-		if (hotkey == null)
-		{
-			return;
-		}
-		String conflict = plugin.getHotkeyConflict();
-		if (conflict != null)
-		{
-			texts.add(hotkey + " to hop to " + world + " (also used by " + conflict + ")");
-			colours.add(Color.RED);
-		}
-		else
-		{
-			texts.add(hotkey + " to hop to " + world);
-			colours.add(Color.YELLOW);
-		}
-	}
-
 	private String describeWorld(int world)
 	{
 		Integer ping = plugin.pingOf(world);
@@ -126,7 +106,6 @@ class JunaOverlay extends Overlay
 					texts.add("Faster gggbbb world: " + describeWorld(faster) + ", this world "
 						+ plugin.pingOf(plugin.currentWorld()) + " ms");
 					colours.add(Color.WHITE);
-					addHopHint(texts, colours, faster);
 				}
 			}
 			else
@@ -138,7 +117,6 @@ class JunaOverlay extends Overlay
 				{
 					texts.add("gggbbb worlds: " + worlds.stream().map(this::describeWorld).collect(Collectors.joining(", ")));
 					colours.add(Color.WHITE);
-					addHopHint(texts, colours, worlds.get(0));
 				}
 			}
 		}

@@ -1,8 +1,6 @@
 package com.togoptimizer;
 
 import com.google.inject.Provides;
-import java.awt.Color;
-import java.lang.reflect.Type;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -11,7 +9,6 @@ import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
@@ -20,7 +17,6 @@ import net.runelite.api.Player;
 import net.runelite.api.TileObject;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
@@ -35,26 +31,14 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
-import net.runelite.client.callback.ClientThread;
-import net.runelite.client.chat.ChatMessageManager;
-import net.runelite.client.chat.QueuedMessage;
-import net.runelite.client.config.Config;
-import net.runelite.client.config.ConfigDescriptor;
-import net.runelite.client.config.ConfigItemDescriptor;
 import net.runelite.client.config.ConfigManager;
-import net.runelite.client.config.Keybind;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.WorldService;
-import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
-import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.overlay.OverlayManager;
-import net.runelite.client.util.ColorUtil;
-import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.util.Text;
-import net.runelite.client.util.WorldUtil;
 import net.runelite.http.api.worlds.World;
 import net.runelite.http.api.worlds.WorldResult;
 import net.runelite.http.api.worlds.WorldType;
@@ -114,27 +98,6 @@ public class TogOptimizerPlugin extends Plugin
 	@Inject
 	private ConfigManager configManager;
 
-	@Inject
-	private KeyManager keyManager;
-
-	@Inject
-	private ClientThread clientThread;
-
-	@Inject
-	private ChatMessageManager chatMessageManager;
-
-	@Inject
-	private PluginManager pluginManager;
-
-	private final HotkeyListener hopListener = new HotkeyListener(() -> config.hopHotkey())
-	{
-		@Override
-		public void hotkeyPressed()
-		{
-			clientThread.invoke(TogOptimizerPlugin.this::hopToBestWorld);
-		}
-	};
-
 	// Per-account records of when the next game unlocks and the experience when the last one ended
 	private static final String UNLOCK_AT_KEY = "unlockAt";
 	private static final String XP_AT_LAST_GAME_KEY = "xpAtLastGame";
@@ -145,13 +108,6 @@ public class TogOptimizerPlugin extends Plugin
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
 	private boolean junasLastLine;
-
-	// The hop hotkey is only listened for in the cave, so it doesn't take the key from anything else
-	private boolean hotkeyActive;
-	// Another enabled plugin with a hotkey setting on the same key, or null
-	@Getter
-	@Nullable
-	private String hotkeyConflict;
 
 	// Juna's lines, worked out once a tick rather than every frame
 	@Getter
@@ -165,11 +121,6 @@ public class TogOptimizerPlugin extends Plugin
 	@Getter
 	@Nullable
 	private String requirement;
-
-	// A hop waiting for the world switcher to open, as the game needs it open to hop
-	@Nullable
-	private net.runelite.api.World hopTarget;
-	private int hopAttempts;
 
 	@Getter
 	private final StreamTracker tracker = new StreamTracker();
@@ -212,7 +163,6 @@ public class TogOptimizerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
-		clientThread.invoke(this::checkHotkeyConflict);
 		overlayManager.add(wallOverlay);
 		overlayManager.add(junaOverlay);
 		overlayManager.add(continueOverlay);
@@ -224,8 +174,6 @@ public class TogOptimizerPlugin extends Plugin
 		overlayManager.remove(wallOverlay);
 		overlayManager.remove(junaOverlay);
 		overlayManager.remove(continueOverlay);
-		setHotkeyActive(false);
-		hopTarget = null;
 		tracker.reset();
 		Arrays.fill(wallObjects, null);
 		Arrays.fill(baseWalls, null);
@@ -244,16 +192,6 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		// Any plugin's hotkey could now clash with ours, so check straight away and warn about a new clash
-		clientThread.invoke(() ->
-		{
-			String before = hotkeyConflict;
-			checkHotkeyConflict();
-			if (hotkeyConflict != null && !hotkeyConflict.equals(before))
-			{
-				chat(ColorUtil.wrapWithColorTag(hopHotkeyText() + " is also used by " + hotkeyConflict + ".", Color.RED));
-			}
-		});
 		if (!TogOptimizerConfig.GROUP.equals(event.getGroup()))
 		{
 			return;
@@ -465,7 +403,6 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		continueHop();
 		if (recordXpTick >= 0 && client.getTickCount() >= recordXpTick)
 		{
 			recordXpTick = -1;
@@ -473,7 +410,6 @@ public class TogOptimizerPlugin extends Plugin
 		}
 
 
-		setHotkeyActive(inCave());
 		if (!inCave())
 		{
 			plan = null;
@@ -565,70 +501,6 @@ public class TogOptimizerPlugin extends Plugin
 		}
 	}
 
-	private void setHotkeyActive(boolean active)
-	{
-		if (active == hotkeyActive)
-		{
-			return;
-		}
-		hotkeyActive = active;
-		if (active)
-		{
-			keyManager.registerKeyListener(hopListener);
-			checkHotkeyConflict();
-		}
-		else
-		{
-			keyManager.unregisterKeyListener(hopListener);
-		}
-	}
-
-	/**
-	 * Looks through the other enabled plugins' hotkey settings for one on the same key as ours. Only
-	 * those settings are read, and only to compare them.
-	 */
-	private void checkHotkeyConflict()
-	{
-		hotkeyConflict = null;
-		Keybind ours = config.hopHotkey();
-		if (ours == null || Keybind.NOT_SET.equals(ours))
-		{
-			return;
-		}
-		for (Plugin other : pluginManager.getPlugins())
-		{
-			if (other == this || !pluginManager.isPluginEnabled(other))
-			{
-				continue;
-			}
-			Config proxy = pluginManager.getPluginConfigProxy(other);
-			if (proxy == null)
-			{
-				continue;
-			}
-			ConfigDescriptor descriptor = configManager.getConfigDescriptor(proxy);
-			for (ConfigItemDescriptor item : descriptor.getItems())
-			{
-				Type type = item.getType();
-				if (!(type instanceof Class) || !Keybind.class.isAssignableFrom((Class<?>) type))
-				{
-					continue;
-				}
-				Keybind theirs = configManager.getConfiguration(descriptor.getGroup().value(), item.getItem().keyName(), type);
-				if (sameKey(ours, theirs))
-				{
-					hotkeyConflict = other.getName();
-					return;
-				}
-			}
-		}
-	}
-
-	static boolean sameKey(Keybind a, @Nullable Keybind b)
-	{
-		return b != null && a.getKeyCode() == b.getKeyCode() && a.getModifiers() == b.getModifiers();
-	}
-
 	private void updateJunaLines()
 	{
 		unlockAt = readUnlockAt();
@@ -650,123 +522,6 @@ public class TogOptimizerPlugin extends Plugin
 		plan = preview.getPlan();
 		shownBest = preview.getShown();
 		waitTicks = preview.getWaitTicks();
-	}
-
-	/**
-	 * Hops to the nearest optimal world, when the player is at Juna on a world that isn't one.
-	 */
-	private void hopToBestWorld()
-	{
-		String reason = null;
-		Integer target = null;
-		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
-		if (!inCave() || juna == null)
-		{
-			reason = "Hop to best world only works in the Tears of Guthix cave.";
-		}
-		else if (playerInRoom())
-		{
-			reason = "Hop to best world is disabled during a game.";
-		}
-		else if (optimal)
-		{
-			target = config.fetchWorldList() ? findFasterWorld() : null;
-			if (target == null)
-			{
-				reason = "This world already has the best stream order.";
-			}
-		}
-		else if (!config.fetchWorldList())
-		{
-			reason = "Hop to best world needs Look up worlds online turned on.";
-		}
-		else
-		{
-			List<Integer> worlds = suggestedWorlds();
-			if (worlds.isEmpty())
-			{
-				reason = "There's no better world to suggest yet.";
-			}
-			else
-			{
-				target = worlds.get(0);
-			}
-		}
-		if (reason != null)
-		{
-			chat(reason);
-			return;
-		}
-
-		WorldResult result = worldService.getWorlds();
-		World world = result == null ? null : result.findWorld(target);
-		if (world == null)
-		{
-			return;
-		}
-		net.runelite.api.World rsWorld = client.createWorld();
-		rsWorld.setActivity(world.getActivity());
-		rsWorld.setAddress(world.getAddress());
-		rsWorld.setId(world.getId());
-		rsWorld.setPlayerCount(world.getPlayers());
-		rsWorld.setLocation(world.getLocation());
-		rsWorld.setTypes(WorldUtil.toWorldTypes(world.getTypes()));
-		hopTarget = rsWorld;
-		hopAttempts = 0;
-		chat(optimal
-			? "Hopping to world " + world.getId() + ", which also has the best stream order and a lower ping."
-			: "Hopping to world " + world.getId() + ", which has the best stream order.");
-	}
-
-	/**
-	 * Hops once the world switcher is open, as World Hopper does, giving up after a few ticks.
-	 */
-	private void continueHop()
-	{
-		if (hopTarget == null)
-		{
-			return;
-		}
-		if (client.getWidget(InterfaceID.Worldswitcher.BUTTONS) == null)
-		{
-			client.openWorldHopper();
-			if (++hopAttempts >= 3)
-			{
-				chat("Couldn't open the world switcher to hop.");
-				hopTarget = null;
-			}
-			return;
-		}
-		client.hopToWorld(hopTarget);
-		hopTarget = null;
-	}
-
-	@Subscribe
-	public void onChatMessage(ChatMessage event)
-	{
-		if (event.getType() == ChatMessageType.GAMEMESSAGE
-			&& event.getMessage().equals("Please finish what you're doing before using the World Switcher."))
-		{
-			hopTarget = null;
-		}
-	}
-
-	private void chat(String message)
-	{
-		chatMessageManager.queue(QueuedMessage.builder()
-			.type(ChatMessageType.CONSOLE)
-			.runeLiteFormattedMessage("ToG Optimizer: " + message)
-			.build());
-	}
-
-	/**
-	 * @return the hop hotkey as shown to the player, or null if none is set
-	 */
-	@Nullable
-	String hopHotkeyText()
-	{
-		Keybind key = config.hopHotkey();
-		return key == null || Keybind.NOT_SET.equals(key) ? null : key.toString();
 	}
 
 	private void gameEnded()
