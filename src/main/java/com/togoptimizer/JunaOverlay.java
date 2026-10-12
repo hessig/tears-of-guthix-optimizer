@@ -131,11 +131,11 @@ class JunaOverlay extends Overlay
 		if (config.showRequirement() && requirement != null)
 		{
 			texts.add(requirement);
-			colours.add(Color.ORANGE);
+			colours.add(plugin.isRequirementCertain() ? Color.ORANGE : Color.LIGHT_GRAY);
 		}
 
 		// Entry timing only matters when the player can actually play
-		boolean canPlay = unlock == null && requirement == null;
+		boolean canPlay = unlock == null && (requirement == null || !plugin.isRequirementCertain());
 		if (config.showEntryTiming() && optimal && canPlay && !plugin.playerInRoom())
 		{
 			String cue = continueCue(plugin);

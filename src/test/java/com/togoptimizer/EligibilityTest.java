@@ -57,6 +57,7 @@ public class EligibilityTest
 		assertEquals("Needs 1 more quest point or 38,500 XP", Eligibility.requirement(323, 322, 1_061_500, 1_000_000L));
 		assertNull(Eligibility.requirement(323, 322, 1_100_000, 1_000_000L));
 		// Without a record of the last game's experience
-		assertEquals("Needs 2 more quest points or 100,000 XP since your last game", Eligibility.requirement(324, 322, 0, null));
+		// Without the experience at the last game, the player may already be able to play
+		assertEquals("May need 2 more quest points or 100,000 XP", Eligibility.requirement(324, 322, 0, null));
 	}
 }

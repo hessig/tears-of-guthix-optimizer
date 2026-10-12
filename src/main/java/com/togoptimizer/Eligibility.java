@@ -80,7 +80,8 @@ final class Eligibility
 	/**
 	 * @param qpRequired the quest points needed to play again, from the game; 0 if there's no requirement
 	 * @param xpAtLastGame total experience when the last game ended, or null if the plugin didn't see it
-	 * @return what's still needed, or null if the experience or quest point condition is met
+	 * @return what's still needed, or null if the experience or quest point condition is met. Without
+	 * {@code xpAtLastGame} the experience can't be checked, so the text only says what may be needed.
 	 */
 	@Nullable
 	static String requirement(int qpRequired, int questPoints, long totalXp, @Nullable Long xpAtLastGame)
@@ -93,7 +94,7 @@ final class Eligibility
 		String questPointText = qp + " more quest point" + (qp == 1 ? "" : "s");
 		if (xpAtLastGame == null)
 		{
-			return "Needs " + questPointText + " or 100,000 XP since your last game";
+			return "May need " + questPointText + " or 100,000 XP";
 		}
 		long xp = XP_NEEDED - (totalXp - xpAtLastGame);
 		if (xp <= 0)

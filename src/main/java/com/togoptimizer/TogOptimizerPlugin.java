@@ -121,6 +121,9 @@ public class TogOptimizerPlugin extends Plugin
 	@Getter
 	@Nullable
 	private String requirement;
+	// False when the experience since the last game is unknown, so the player may already be able to play
+	@Getter
+	private boolean requirementCertain;
 
 	@Getter
 	private final StreamTracker tracker = new StreamTracker();
@@ -518,6 +521,7 @@ public class TogOptimizerPlugin extends Plugin
 	{
 		unlockAt = readUnlockAt();
 		requirement = readRequirement();
+		requirementCertain = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY) != null;
 		boolean online = config.fetchWorldList() && juna != null;
 		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
 		suggestions = online && !optimal ? suggestedWorlds() : List.of();
