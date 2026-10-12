@@ -23,6 +23,10 @@ final class Planner
 	// values cross as streams age; at 0.5 the highlight reversed about 12 times a game, at 1.5 about
 	// once, with no measurable cost in tears.
 	static final double STEADY_MARGIN = 1.5;
+	// A burst's blues land on consecutive ticks, so the best wall can change every tick of it. Holding a
+	// new choice this long, enough to click it, stopped it reversing in simulation and gave a player two
+	// ticks slow to react about 2 more tears a game.
+	static final int HOLD_TICKS = 4;
 	// The six streams move on consecutive ticks, so a cycle's remaining moves all fall within this many
 	private static final int BURST_TICKS = 5;
 
@@ -80,10 +84,13 @@ final class Planner
 	}
 
 	/**
-	 * Keeps showing the previous choice while it's still an option within {@code margin} tears of the
-	 * best, so near-ties don't make the recommendation flicker between walls.
+	 * Keeps showing the previous choice while it's still an option, for {@link #HOLD_TICKS} after it was
+	 * first shown and then while it's within {@code margin} tears of the best, so the recommendation
+	 * doesn't flicker between walls.
+	 *
+	 * @param shownFor ticks since the previous choice was first shown
 	 */
-	static int steady(int previous, Plan plan, double margin)
+	static int steady(int previous, int shownFor, Plan plan, double margin)
 	{
 		int best = plan.getBest();
 		if (previous < 0 || best < 0)
@@ -91,7 +98,11 @@ final class Planner
 			return best;
 		}
 		double[] expected = plan.getExpected();
-		return !Double.isNaN(expected[previous]) && expected[previous] >= expected[best] - margin ? previous : best;
+		if (Double.isNaN(expected[previous]))
+		{
+			return best;
+		}
+		return shownFor < HOLD_TICKS || expected[previous] >= expected[best] - margin ? previous : best;
 	}
 
 	/**
@@ -116,12 +127,17 @@ final class Planner
 	}
 
 	/**
-	 * Any blue wall, or the empty wall the player is already at while a blue could still land there
+	 * Any blue wall that will still be there when the player could start collecting, or the empty wall
+	 * the player is already at while a blue could still land there
 	 */
 	private static boolean isOption(TearsGame game, int wall)
 	{
-		return game.colour[wall] == TearsGame.BLUE
-			|| wall == game.target && game.colour[wall] == TearsGame.NONE && waitTicks(game) > 0;
+		if (game.colour[wall] == TearsGame.BLUE)
+		{
+			return wall == game.target || game.nextMove[wall] < 0
+				|| game.nextMove[wall] - game.tick > Walls.travel(game.x, game.y, wall) + TearsGame.START_DELAY;
+		}
+		return wall == game.target && game.colour[wall] == TearsGame.NONE && waitTicks(game) > 0;
 	}
 
 	/**

@@ -9,8 +9,7 @@ public class PlannerTest
 	@Test
 	public void onlyBlueWallsAndWaitingAreOptions()
 	{
-		TearsGame game = TearsGameTest.game("gggbbb", 300, 1, 5);
-		game.moveStreams();
+		TearsGame game = afterBurst(TearsGameTest.game("gggbbb", 300, 1, 5));
 		Planner.Plan plan = new Planner(50, 40).plan(game, 1);
 
 		for (int wall = 0; wall < Walls.COUNT; wall++)
@@ -43,8 +42,7 @@ public class PlannerTest
 	public void optionsStillDifferWhileAClickIsOnItsWay()
 	{
 		// A click already on its way used to lock every option into the same future
-		TearsGame game = TearsGameTest.game("gggbbb", 300, 1, 5);
-		game.moveStreams();
+		TearsGame game = afterBurst(TearsGameTest.game("gggbbb", 300, 1, 5));
 		int firstBlue = 0;
 		while (game.colour[firstBlue] != TearsGame.BLUE)
 		{
@@ -67,6 +65,20 @@ public class PlannerTest
 		assertTrue(max - min > 0.1);
 	}
 
+	/**
+	 * The game once its blues have all moved, so each can be reached before it moves again
+	 */
+	private static TearsGame afterBurst(TearsGame game)
+	{
+		while (game.tick < 3)
+		{
+			game.moveStreams();
+			game.tick++;
+		}
+		game.moveStreams();
+		return game;
+	}
+
 	private static Planner.Plan plan(double... expected)
 	{
 		int best = -1;
@@ -84,13 +96,51 @@ public class PlannerTest
 	public void theShownChoiceHoldsThroughNearTies()
 	{
 		double n = Double.NaN;
-		assertEquals(2, Planner.steady(2, plan(n, 30.4, 30.1, n), 0.5));
+		int settled = Planner.HOLD_TICKS;
+		assertEquals(2, Planner.steady(2, settled, plan(n, 30.4, 30.1, n), 0.5));
 		// Clearly beaten
-		assertEquals(1, Planner.steady(2, plan(n, 31.0, 30.1, n), 0.5));
+		assertEquals(1, Planner.steady(2, settled, plan(n, 31.0, 30.1, n), 0.5));
 		// No longer an option
-		assertEquals(1, Planner.steady(3, plan(n, 30.4, 30.1, n), 0.5));
+		assertEquals(1, Planner.steady(3, settled, plan(n, 30.4, 30.1, n), 0.5));
 		// Nothing shown yet
-		assertEquals(1, Planner.steady(-1, plan(n, 30.4, 30.1, n), 0.5));
+		assertEquals(1, Planner.steady(-1, settled, plan(n, 30.4, 30.1, n), 0.5));
+	}
+
+	@Test
+	public void aNewChoiceHoldsLongEnoughToClick()
+	{
+		double n = Double.NaN;
+		assertEquals(2, Planner.steady(2, Planner.HOLD_TICKS - 1, plan(n, 33.0, 30.1, n), 0.5));
+		assertEquals(1, Planner.steady(2, Planner.HOLD_TICKS, plan(n, 33.0, 30.1, n), 0.5));
+		// Unless it stops being an option
+		assertEquals(1, Planner.steady(3, 0, plan(n, 33.0, 30.1, n), 0.5));
+	}
+
+	@Test
+	public void aBlueThatLeavesBeforeThePlayerArrivesIsNoOption()
+	{
+		TearsGame game = new TearsGame();
+		game.tick = 100;
+		game.endTick = 400;
+		game.x = Walls.standX(4);
+		game.y = Walls.standY(4);
+		game.target = 4;
+		game.reaction = 2;
+		game.rng = new java.util.Random(1);
+		game.colour[4] = TearsGame.BLUE;
+		game.nextMove[4] = 101;
+		// Wall 3 is next to wall 4, so collecting would start three ticks from now
+		game.colour[3] = TearsGame.BLUE;
+		game.nextMove[3] = 103;
+		game.colour[0] = TearsGame.BLUE;
+		game.nextMove[0] = 116;
+		Planner.Plan plan = new Planner(50, 40).plan(game, 1);
+		assertTrue(Double.isNaN(plan.getExpected()[3]));
+		// The player's own wall stays an option until its stream leaves
+		assertTrue(!Double.isNaN(plan.getExpected()[4]));
+
+		game.nextMove[3] = 104;
+		assertTrue(!Double.isNaN(new Planner(50, 40).plan(game, 1).getExpected()[3]));
 	}
 
 	@Test

@@ -19,7 +19,8 @@ public class PreviewRunTest
 			StreamTracker tracker = new StreamTracker();
 			int[] before = new int[Walls.COUNT];
 			Planner planner = new Planner(100, 40);
-			int[] shown = {-1};
+			// The shown wall and the tick it was first shown
+			int[] shown = {-1, 0};
 
 			PreviewRun preview = null;
 			for (int tick = 0; tick < WATCH_TICKS + PREVIEW_TICKS; tick++)
@@ -47,7 +48,12 @@ public class PreviewRunTest
 					// The same strategy played directly: plan, hold steady, go where it points
 					mirror.moveStreams();
 					Planner.Plan plan = planner.plan(mirror, seed);
-					shown[0] = Planner.steady(shown[0], plan, Planner.STEADY_MARGIN);
+					int previous = shown[0];
+					shown[0] = Planner.steady(shown[0], tick - shown[1], plan, Planner.STEADY_MARGIN);
+					if (shown[0] != previous)
+					{
+						shown[1] = tick;
+					}
 					mirror.request(shown[0]);
 					mirror.finishTick();
 				}

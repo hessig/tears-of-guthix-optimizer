@@ -17,6 +17,7 @@ final class PreviewRun
 	// The planner's choice, held steady through near-ties like the highlight a player would follow
 	@Getter
 	private int shown = -1;
+	private int shownSince;
 	@Getter
 	private int waitTicks = -1;
 
@@ -51,7 +52,12 @@ final class PreviewRun
 		tracker.fill(player);
 		// The same futures every tick, so the estimates don't jitter from one tick to the next
 		plan = planner.plan(player, seed);
-		shown = Planner.steady(shown, plan, Planner.STEADY_MARGIN);
+		int previous = shown;
+		shown = Planner.steady(shown, tick - shownSince, plan, Planner.STEADY_MARGIN);
+		if (shown != previous)
+		{
+			shownSince = tick;
+		}
 		// Worked out before the tick finishes, while the game still shows this tick's streams
 		waitTicks = Planner.waitTicksFor(player, shown);
 		// Moves whenever the shown wall changes, as a player following it would

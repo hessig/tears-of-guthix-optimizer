@@ -135,6 +135,7 @@ public class TogOptimizerPlugin extends Plugin
 	// The wall to highlight, which only changes when another is clearly better
 	@Getter
 	private int shownBest = -1;
+	private int shownSince;
 
 	// The wall the player last chose to collect from, or -1
 	private int collectingWall = -1;
@@ -364,6 +365,13 @@ public class TogOptimizerPlugin extends Plugin
 		}
 		// Any other click walks the player away from the wall
 		collectingWall = wall;
+		if (wall >= 0 && wall != shownBest)
+		{
+			// The player chose another wall: keep showing it unless one is clearly better, rather than
+			// holding the old choice
+			shownBest = wall;
+			shownSince = client.getTickCount() - Planner.HOLD_TICKS;
+		}
 
 		if (config.debugLogging())
 		{
@@ -490,7 +498,12 @@ public class TogOptimizerPlugin extends Plugin
 
 		// The same futures every tick, so the estimates don't jitter from one tick to the next
 		plan = planner.plan(game, 0);
-		shownBest = Planner.steady(shownBest, plan, Planner.STEADY_MARGIN);
+		int previous = shownBest;
+		shownBest = Planner.steady(shownBest, tick - shownSince, plan, Planner.STEADY_MARGIN);
+		if (shownBest != previous)
+		{
+			shownSince = tick;
+		}
 		waitTicks = Planner.waitTicksFor(game, shownBest);
 
 		if (config.debugLogging())
