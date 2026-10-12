@@ -13,8 +13,9 @@ final class EntryTiming
 	// Ticks from continuing past Juna's last line to the game starting, estimated from one game where the
 	// whole story took 15 ticks. The debug log records both, to refine it.
 	static final int CONTINUE_TICKS = 3;
-	// Her last line before letting the player in
-	static final String LAST_LINE = "I will let you into the cave";
+	// Her last line before letting the player in. "I will let you into the cave" comes a line earlier, and
+	// also in her prompt for a story
+	static final String LAST_LINE = "Collect as much as you can from the blue streams";
 	// When the first blue moves relative to the player entering, from one tick before to two after
 	private static final int EARLIEST_ENTRY = -1;
 	private static final int LATEST_ENTRY = 2;
