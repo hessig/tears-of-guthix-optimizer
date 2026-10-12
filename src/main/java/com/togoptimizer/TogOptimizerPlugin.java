@@ -135,6 +135,9 @@ public class TogOptimizerPlugin extends Plugin
 	// The wall to highlight, which only changes when another is clearly better
 	@Getter
 	private int shownBest = -1;
+	// The wall the highlight moves to next, when that's already known
+	@Getter
+	private Planner.Next next;
 	private int shownSince;
 
 	// The wall the player last chose to collect from, or -1
@@ -182,6 +185,7 @@ public class TogOptimizerPlugin extends Plugin
 		pinger.shutDown();
 		preview = null;
 		plan = null;
+		next = null;
 		shownBest = -1;
 		waitTicks = -1;
 		collectingWall = -1;
@@ -220,6 +224,7 @@ public class TogOptimizerPlugin extends Plugin
 			Arrays.fill(wallObjects, null);
 			Arrays.fill(baseWalls, null);
 			plan = null;
+			next = null;
 			shownBest = -1;
 			waitTicks = -1;
 			collectingWall = -1;
@@ -421,6 +426,7 @@ public class TogOptimizerPlugin extends Plugin
 		if (!inCave())
 		{
 			plan = null;
+			next = null;
 			shownBest = -1;
 			waitTicks = -1;
 			preview = null;
@@ -441,6 +447,7 @@ public class TogOptimizerPlugin extends Plugin
 		if (!tracker.isComplete())
 		{
 			plan = null;
+			next = null;
 			shownBest = -1;
 			waitTicks = -1;
 			return;
@@ -457,6 +464,7 @@ public class TogOptimizerPlugin extends Plugin
 			{
 				preview = null;
 				plan = null;
+				next = null;
 				shownBest = -1;
 				waitTicks = -1;
 			}
@@ -479,6 +487,7 @@ public class TogOptimizerPlugin extends Plugin
 		if (!shown)
 		{
 			plan = null;
+			next = null;
 			shownBest = -1;
 			waitTicks = -1;
 			return;
@@ -505,12 +514,13 @@ public class TogOptimizerPlugin extends Plugin
 			shownSince = tick;
 		}
 		waitTicks = Planner.waitTicksFor(game, shownBest);
+		next = config.showNext() ? planner.next(game, shownBest, tick - shownSince, 0) : null;
 
 		if (config.debugLogging())
 		{
-			log.info("togoptimizer player tick={} at={},{} collecting={} tears={} best={} expected={}", tick, game.x,
-				game.y, collectingWall, client.getVarbitValue(VarbitID.TOG_TEARS_COLLECTED), plan.getBest(),
-				describe(plan));
+			log.info("togoptimizer player tick={} at={},{} collecting={} tears={} best={} shown={} next={} expected={}", tick,
+				game.x, game.y, collectingWall, client.getVarbitValue(VarbitID.TOG_TEARS_COLLECTED), plan.getBest(), shownBest,
+				next == null ? "-" : next.getWall() + "/" + next.getTicks(), describe(plan));
 		}
 	}
 
@@ -535,6 +545,7 @@ public class TogOptimizerPlugin extends Plugin
 		plan = preview.getPlan();
 		shownBest = preview.getShown();
 		waitTicks = preview.getWaitTicks();
+		next = config.showNext() ? preview.getNext() : null;
 	}
 
 	private void gameEnded()
