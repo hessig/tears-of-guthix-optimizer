@@ -115,6 +115,9 @@ public class TogOptimizerPlugin extends Plugin
 	@Getter
 	@Nullable
 	private Integer fasterWorld;
+	// On an optimal world, true once the pings show no other optimal world is clearly faster
+	@Getter
+	private boolean lowestPing;
 	@Getter
 	@Nullable
 	private Long unlockAt;
@@ -191,6 +194,7 @@ public class TogOptimizerPlugin extends Plugin
 		juna = null;
 		suggestions = List.of();
 		fasterWorld = null;
+		lowestPing = false;
 	}
 
 	@Subscribe
@@ -525,7 +529,12 @@ public class TogOptimizerPlugin extends Plugin
 		boolean online = config.fetchWorldList() && juna != null;
 		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
 		suggestions = online && !optimal ? suggestedWorlds() : List.of();
-		fasterWorld = online && optimal ? findFasterWorld() : null;
+		fasterWorld = null;
+		lowestPing = false;
+		if (online && optimal)
+		{
+			comparePing();
+		}
 	}
 
 	private void previewTick(int tick)
@@ -705,28 +714,25 @@ public class TogOptimizerPlugin extends Plugin
 	}
 
 	/**
-	 * On an optimal world, another optimal world with a clearly lower ping, as a lower ping makes clicks
-	 * land on the intended tick more often.
-	 *
-	 * @return that world, or null if there's none or the pings aren't measured yet
+	 * On an optimal world, looks for another optimal world with a clearly lower ping, as a lower ping
+	 * makes clicks land on the intended tick more often. Sets fasterWorld to it, or lowestPing once the
+	 * pings show there's none; neither while the pings aren't measured yet.
 	 */
-	@Nullable
-	private Integer findFasterWorld()
+	private void comparePing()
 	{
 		WorldResult worlds = worldService.getWorlds();
 		World current = worlds == null ? null : worlds.findWorld(client.getWorld());
 		if (current == null)
 		{
-			return null;
+			return;
 		}
 		pinger.pingOnce(current.getId(), current.getAddress());
 		List<Integer> candidates = suggestedWorlds();
-		if (candidates.isEmpty())
-		{
-			return null;
-		}
-		int best = candidates.get(0);
-		return WorldPinger.isFaster(pinger.pingOf(best), pinger.pingOf(current.getId()), FASTER_BY_MS) ? best : null;
+		Integer best = candidates.isEmpty() ? null : candidates.get(0);
+		Integer bestPing = best == null ? null : pinger.pingOf(best);
+		Integer currentPing = pinger.pingOf(current.getId());
+		fasterWorld = WorldPinger.isFaster(bestPing, currentPing, FASTER_BY_MS) ? best : null;
+		lowestPing = WorldPinger.noneFaster(bestPing, currentPing, FASTER_BY_MS);
 	}
 
 	private static boolean inRoom(WorldPoint location)

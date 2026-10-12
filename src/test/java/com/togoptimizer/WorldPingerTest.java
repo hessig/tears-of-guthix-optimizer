@@ -33,6 +33,16 @@ public class WorldPingerTest
 	}
 
 	@Test
+	public void noneFasterOnlyOnceBothPingsAreKnown()
+	{
+		assertEquals(true, WorldPinger.noneFaster(21, 30, 10));
+		assertEquals(true, WorldPinger.noneFaster(45, 30, 10));
+		assertEquals(false, WorldPinger.noneFaster(20, 30, 10));
+		assertEquals(false, WorldPinger.noneFaster(null, 30, 10));
+		assertEquals(false, WorldPinger.noneFaster(21, null, 10));
+	}
+
+	@Test
 	public void onlyTheRequestedNumberAreReturned()
 	{
 		Map<Integer, Integer> pings = Map.of(329, 95, 518, 20, 429, 40);

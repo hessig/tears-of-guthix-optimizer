@@ -114,6 +114,14 @@ class WorldPinger
 	}
 
 	/**
+	 * @return true if both pings are known and the candidate's isn't lower by {@code by} ms
+	 */
+	static boolean noneFaster(@Nullable Integer candidate, @Nullable Integer current, int by)
+	{
+		return candidate != null && current != null && !isFaster(candidate, current, by);
+	}
+
+	/**
 	 * Orders candidate worlds by ping, fastest first. Worlds not measured yet keep their original
 	 * order after the measured ones.
 	 */

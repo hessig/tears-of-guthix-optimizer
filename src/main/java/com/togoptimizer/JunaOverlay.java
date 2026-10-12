@@ -98,7 +98,7 @@ class JunaOverlay extends Overlay
 			}
 			else if (optimal)
 			{
-				texts.add("Best stream order (gggbbb)");
+				texts.add(plugin.isLowestPing() ? "Best stream order (gggbbb) & ping" : "Best stream order (gggbbb)");
 				colours.add(Color.GREEN);
 				Integer faster = plugin.getFasterWorld();
 				if (faster != null)
