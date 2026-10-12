@@ -549,7 +549,12 @@ public class TogOptimizerPlugin extends Plugin
 		{
 			text = dialogueText(InterfaceID.Objectbox.TEXT);
 		}
-		junasLastLine = text != null && text.contains(EntryTiming.LAST_LINE);
+		boolean lastLine = text != null && text.contains(EntryTiming.LAST_LINE);
+		if (junasLastLine && !lastLine && config.debugLogging())
+		{
+			log.info("togoptimizer continued tick={} cue={}", client.getTickCount(), ticksUntilContinue());
+		}
+		junasLastLine = lastLine;
 		if (text == null || text.equals(lastDialogue))
 		{
 			return;

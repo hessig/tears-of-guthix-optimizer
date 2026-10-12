@@ -42,15 +42,15 @@ public class EntryTimingTest
 	@Test
 	public void theBestMomentLeavesTheFirstBlueMovingJustAfterEntering()
 	{
-		// Continuing on tick 112 starts the game on 115, one tick before the first blue moves on 116
-		assertEquals(0, EntryTiming.ticksUntilContinue(116, 112));
+		// Continuing on tick 105 starts the game on 115, one tick before the first blue moves on 116
+		assertEquals(0, EntryTiming.ticksUntilContinue(116, 105));
 		// Entering from two ticks before it moves to one tick after is still good
-		assertEquals(0, EntryTiming.ticksUntilContinue(116, 111));
-		assertEquals(0, EntryTiming.ticksUntilContinue(116, 113));
-		assertEquals(0, EntryTiming.ticksUntilContinue(116, 114));
-		// Too late for this cycle: the next good moment is tick 127, for the move on 132
-		assertEquals(12, EntryTiming.ticksUntilContinue(116, 115));
-		// Early: count down to the window opening on tick 111
-		assertEquals(3, EntryTiming.ticksUntilContinue(116, 108));
+		assertEquals(0, EntryTiming.ticksUntilContinue(116, 104));
+		assertEquals(0, EntryTiming.ticksUntilContinue(116, 106));
+		assertEquals(0, EntryTiming.ticksUntilContinue(116, 107));
+		// Too late for this cycle: the next good moment is tick 120, for the move on 132
+		assertEquals(12, EntryTiming.ticksUntilContinue(116, 108));
+		// Early: count down to the window opening on tick 104
+		assertEquals(3, EntryTiming.ticksUntilContinue(116, 101));
 	}
 }
