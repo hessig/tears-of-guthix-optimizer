@@ -79,7 +79,7 @@ class JunaOverlay extends Overlay
 			return null;
 		}
 		GameObject juna = plugin.getJuna();
-		if (juna == null)
+		if (juna == null || config.hideDuringGame() && plugin.playerInRoom())
 		{
 			return null;
 		}

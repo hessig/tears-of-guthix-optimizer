@@ -137,6 +137,18 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "hideDuringGame",
+		name = "Hide during the game",
+		description = "Hides the text above Juna while you're in the wall room.",
+		position = 4,
+		section = juna
+	)
+	default boolean hideDuringGame()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "fetchWorldList",
 		name = "Look up worlds online",
 		description = "Reads the list of worlds and their stream orders reported by ToG Crowdsourcing users "
@@ -145,7 +157,7 @@ public interface TogOptimizerConfig extends Config
 		warning = "Enabling this setting reads data from togcrowdsourcing.com, a third-party site not controlled or "
 			+ "verified by the RuneLite developers, which will see your IP address. No account information is shared. "
 			+ "Continue?",
-		position = 4,
+		position = 5,
 		section = juna
 	)
 	default boolean fetchWorldList()
