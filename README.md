@@ -14,6 +14,10 @@ whether the world has the best stream order, when to enter, and when you can pla
   left before it's time to move.
 - **Green streams.** A left click on a wall with a green stream walks instead of collecting. Collect-from
   stays in the right-click menu.
+- **Post-game summary.** After a game, chat shows your tears next to what following the plugin perfectly
+  would have collected and the most possible in hindsight, then any tears lost to a late entry, late
+  clicks, clicks off the highlight, extra walking or green streams. Each is worked out by replaying
+  your game on the streams it recorded.
 - **Preview.** Outside the wall room, the walls show the plugin's advice on the live streams, so you can
   see how it works before playing.
 - **Stream order.** Shows above Juna whether the world moves its streams in the best order: green,

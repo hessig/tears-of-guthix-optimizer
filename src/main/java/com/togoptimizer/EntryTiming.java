@@ -62,17 +62,33 @@ final class EntryTiming
 	 */
 	static int ticksUntilContinue(int firstBlueMove, int tick)
 	{
-		// How many ticks after entering the first blue would move, if the player continued now
-		int entry = Math.floorMod(firstBlueMove - tick - CONTINUE_TICKS, TearsGame.STREAM_LIFE);
-		if (entry > TearsGame.STREAM_LIFE / 2)
-		{
-			entry -= TearsGame.STREAM_LIFE;
-		}
+		int entry = entryOffset(firstBlueMove, tick);
 		if (entry >= EARLIEST_ENTRY && entry <= LATEST_ENTRY)
 		{
 			return 0;
 		}
 		// Waiting a tick moves the entry one tick later in the cycle, bringing the first blue one closer
 		return Math.floorMod(entry - LATEST_ENTRY, TearsGame.STREAM_LIFE);
+	}
+
+	/**
+	 * @return how many ticks after entering the first blue would move, if the player continued now
+	 */
+	static int entryOffset(int firstBlueMove, int tick)
+	{
+		int entry = Math.floorMod(firstBlueMove - tick - CONTINUE_TICKS, TearsGame.STREAM_LIFE);
+		return entry > TearsGame.STREAM_LIFE / 2 ? entry - TearsGame.STREAM_LIFE : entry;
+	}
+
+	/**
+	 * @return ticks the player entered after the best window, negative for before it, or 0 within it
+	 */
+	static int ticksLate(int entryOffset)
+	{
+		if (entryOffset < EARLIEST_ENTRY)
+		{
+			return EARLIEST_ENTRY - entryOffset;
+		}
+		return entryOffset > LATEST_ENTRY ? LATEST_ENTRY - entryOffset : 0;
 	}
 }

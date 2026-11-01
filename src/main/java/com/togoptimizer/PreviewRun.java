@@ -48,8 +48,27 @@ final class PreviewRun
 			return;
 		}
 
-		player.tick = tick;
 		tracker.fill(player);
+		advance(tick);
+	}
+
+	/**
+	 * Advances the player through a tick of recorded streams.
+	 */
+	void tick(int[] colour, int[] nextMove, int tick)
+	{
+		if (isOver())
+		{
+			return;
+		}
+		System.arraycopy(colour, 0, player.colour, 0, Walls.COUNT);
+		System.arraycopy(nextMove, 0, player.nextMove, 0, Walls.COUNT);
+		advance(tick);
+	}
+
+	private void advance(int tick)
+	{
+		player.tick = tick;
 		// The same futures every tick, so the estimates don't jitter from one tick to the next
 		plan = planner.plan(player, seed);
 		int previous = shown;

@@ -53,4 +53,16 @@ public class EntryTimingTest
 		// Early: count down to the window opening on tick 104
 		assertEquals(3, EntryTiming.ticksUntilContinue(116, 101));
 	}
+
+	@Test
+	public void entriesOffTheWindowCountAsLateOrEarly()
+	{
+		// The first blue moves on tick 116; continuing on 105 enters on 115, one tick before it
+		assertEquals(1, EntryTiming.entryOffset(116, 105));
+		assertEquals(0, EntryTiming.ticksLate(EntryTiming.entryOffset(116, 105)));
+		// Continuing three ticks later enters two ticks after it moved, one past the window
+		assertEquals(1, EntryTiming.ticksLate(EntryTiming.entryOffset(116, 108)));
+		// Continuing two ticks early enters three ticks before it moves, one before the window
+		assertEquals(-1, EntryTiming.ticksLate(EntryTiming.entryOffset(116, 103)));
+	}
 }

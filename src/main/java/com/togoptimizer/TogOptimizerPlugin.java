@@ -1,14 +1,17 @@
 package com.togoptimizer;
 
 import com.google.inject.Provides;
+import java.awt.Color;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
@@ -32,6 +35,9 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -67,6 +73,11 @@ public class TogOptimizerPlugin extends Plugin
 	private static final int REACTION = 2;
 	// How much lower another optimal world's ping must be to suggest hopping from an optimal world
 	static final int FASTER_BY_MS = 10;
+	// Summary colours readable on each chatbox background
+	private static final GameSummary.Palette OPAQUE_PALETTE =
+		new GameSummary.Palette(new Color(0x006400), new Color(0x00339a), new Color(0xb00000));
+	private static final GameSummary.Palette TRANSPARENT_PALETTE =
+		new GameSummary.Palette(new Color(0x5cff5c), new Color(0x8fc8ff), new Color(0xff6b6b));
 	private static final Set<WorldType> SUGGESTABLE = EnumSet.of(WorldType.MEMBERS, WorldType.LEGACY_ONLY, WorldType.EOC_ONLY);
 
 	@Inject
@@ -98,6 +109,15 @@ public class TogOptimizerPlugin extends Plugin
 
 	@Inject
 	private ConfigManager configManager;
+
+	@Inject
+	private ClientThread clientThread;
+
+	@Inject
+	private ChatMessageManager chatMessageManager;
+
+	@Inject
+	private ScheduledExecutorService executor;
 
 	// Per-account records of when the next game unlocks and the experience when the last one ended
 	private static final String UNLOCK_AT_KEY = "unlockAt";
@@ -148,6 +168,12 @@ public class TogOptimizerPlugin extends Plugin
 	private int collectingWall = -1;
 	// The tick the player stepped into the wall room, when their time started, or -1
 	private int gameStartTick = -1;
+
+	// The game being played, or about to be, for the post-game summary
+	private GameRecord record = new GameRecord();
+	// How late the player continued past Juna's last line, from EntryTiming.ticksLate, or null if unknown
+	@Nullable
+	private Integer ticksLate;
 
 	// The stream object currently showing on each wall, for outlining
 	private final DecorativeObject[] wallObjects = new DecorativeObject[Walls.COUNT];
@@ -232,6 +258,7 @@ public class TogOptimizerPlugin extends Plugin
 			waitTicks = -1;
 			collectingWall = -1;
 			gameStartTick = -1;
+			record = new GameRecord();
 		}
 	}
 
@@ -371,6 +398,10 @@ public class TogOptimizerPlugin extends Plugin
 				client.getTopLevelWorldView().getPlane());
 			wall = Walls.at(point.getX(), point.getY());
 		}
+		if (wall >= 0 && gameStartTick >= 0 && !record.isOver())
+		{
+			record.click(client.getTickCount(), wall, shownBest);
+		}
 		// Any other click walks the player away from the wall
 		collectingWall = wall;
 		if (wall >= 0 && wall != shownBest)
@@ -443,7 +474,13 @@ public class TogOptimizerPlugin extends Plugin
 			recordXpTick = -1;
 			configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, client.getOverallExperience());
 		}
-
+		// The summary comes as the game's time runs out, while the player is led out of the room
+		if (record.start >= 0 && !record.isOver() && client.getTickCount() >= record.start + record.length + GameRecord.END_LAG)
+		{
+			record.end = client.getTickCount();
+			record.tears = lastTears;
+			summarise();
+		}
 
 		if (!inCave())
 		{
@@ -473,6 +510,7 @@ public class TogOptimizerPlugin extends Plugin
 			return;
 		}
 
+		record.streams(tick, tracker);
 		Player player = client.getLocalPlayer();
 		WorldPoint location = player.getWorldLocation();
 		// Nothing on the walls to plan for
@@ -498,6 +536,7 @@ public class TogOptimizerPlugin extends Plugin
 		if (gameStartTick < 0)
 		{
 			gameStartTick = tick;
+			startRecord(tick, questPoints);
 			if (config.debugLogging())
 			{
 				log.info("togoptimizer game start tick={} questPoints={}", tick, questPoints);
@@ -508,6 +547,7 @@ public class TogOptimizerPlugin extends Plugin
 			plan = null;
 			shownBest = -1;
 			waitTicks = -1;
+			recordTick(tick, location);
 			return;
 		}
 
@@ -532,6 +572,7 @@ public class TogOptimizerPlugin extends Plugin
 			shownSince = tick;
 		}
 		waitTicks = Planner.waitTicksFor(game, shownBest);
+		recordTick(tick, location);
 
 		if (config.debugLogging())
 		{
@@ -570,6 +611,63 @@ public class TogOptimizerPlugin extends Plugin
 		waitTicks = preview.getWaitTicks();
 	}
 
+	private void startRecord(int tick, int questPoints)
+	{
+		if (record.start >= 0)
+		{
+			// Left over from a game that didn't finish here
+			record = new GameRecord();
+			record.streams(tick, tracker);
+		}
+		record.start = tick;
+		record.length = questPoints;
+		record.ticksLate = ticksLate;
+		ticksLate = null;
+	}
+
+	private void recordTick(int tick, WorldPoint location)
+	{
+		if (!record.isOver())
+		{
+			record.tick(tick, new GameRecord.Tick(location.getX(), location.getY(),
+				client.getVarbitValue(VarbitID.TOG_TEARS_COLLECTED), collectingWall, shownBest));
+		}
+	}
+
+	/**
+	 * Works out the post-game summary away from the client thread, since it replays the whole game, and
+	 * shows it in chat.
+	 */
+	private void summarise()
+	{
+		GameRecord done = record;
+		record = new GameRecord();
+		if (!config.postGameSummary())
+		{
+			return;
+		}
+		boolean transparent = client.isResized() && client.getVarbitValue(VarbitID.CHATBOX_TRANSPARENCY) == 1;
+		GameSummary.Palette palette = !config.colourSummary() ? null : transparent ? TRANSPARENT_PALETTE : OPAQUE_PALETTE;
+		executor.execute(() ->
+		{
+			GameSummary.Result result = GameSummary.summarise(done, planner, ENTRANCE_X, ENTRANCE_Y);
+			if (config.debugLogging())
+			{
+				log.info("togoptimizer summary {}", result);
+			}
+			List<String> lines = GameSummary.lines(result, palette);
+			clientThread.invokeLater(() -> lines.forEach(this::chat));
+		});
+	}
+
+	private void chat(String message)
+	{
+		chatMessageManager.queue(QueuedMessage.builder()
+			.type(ChatMessageType.CONSOLE)
+			.runeLiteFormattedMessage("ToG Optimizer: " + message)
+			.build());
+	}
+
 	private void gameEnded()
 	{
 		long now = System.currentTimeMillis();
@@ -596,9 +694,14 @@ public class TogOptimizerPlugin extends Plugin
 			text = dialogueText(InterfaceID.Objectbox.TEXT);
 		}
 		boolean lastLine = text != null && text.contains(EntryTiming.LAST_LINE);
-		if (junasLastLine && !lastLine && config.debugLogging())
+		if (junasLastLine && !lastLine)
 		{
-			log.info("togoptimizer continued tick={} cue={}", client.getTickCount(), ticksUntilContinue());
+			Integer offset = entryOffset();
+			ticksLate = offset == null ? null : EntryTiming.ticksLate(offset);
+			if (config.debugLogging())
+			{
+				log.info("togoptimizer continued tick={} cue={} late={}", client.getTickCount(), ticksUntilContinue(), ticksLate);
+			}
 		}
 		junasLastLine = lastLine;
 		if (text == null || text.equals(lastDialogue))
@@ -708,9 +811,27 @@ public class TogOptimizerPlugin extends Plugin
 	 */
 	int ticksUntilContinue()
 	{
+		Integer firstBlue = firstBlueMove();
+		return firstBlue == null ? -1 : EntryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
+	}
+
+	@Nullable
+	private Integer entryOffset()
+	{
+		Integer firstBlue = firstBlueMove();
+		return firstBlue == null ? null : EntryTiming.entryOffset(firstBlue, client.getTickCount());
+	}
+
+	/**
+	 * @return the tick the first blue of the stream cycle next moves, or null if unknown or this world's
+	 * order isn't the best one
+	 */
+	@Nullable
+	private Integer firstBlueMove()
+	{
 		if (!StreamTracker.OPTIMAL_ORDER.equals(worldOrder()))
 		{
-			return -1;
+			return null;
 		}
 		int[] colour = new int[Walls.COUNT];
 		int[] nextMove = new int[Walls.COUNT];
@@ -720,11 +841,11 @@ public class TogOptimizerPlugin extends Plugin
 			nextMove[wall] = tracker.nextMove(wall);
 			if (colour[wall] == TearsGame.BLUE && nextMove[wall] < 0)
 			{
-				return -1;
+				return null;
 			}
 		}
 		int firstBlue = EntryTiming.firstBlueMove(colour, nextMove);
-		return firstBlue < 0 ? -1 : EntryTiming.ticksUntilContinue(firstBlue, client.getTickCount());
+		return firstBlue < 0 ? null : firstBlue;
 	}
 
 	@Nullable

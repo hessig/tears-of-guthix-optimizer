@@ -97,6 +97,29 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "postGameSummary",
+		name = "Post-game summary",
+		description = "After a game, says in chat how your tears compare with following the plugin perfectly and the "
+			+ "most possible in hindsight, and where you fell behind the plugin's advice.",
+		position = 6
+	)
+	default boolean postGameSummary()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "colourSummary",
+		name = "Colour the summary",
+		description = "Shows your tears in green, the numbers to compare against in blue, and tears lost in red.",
+		position = 7
+	)
+	default boolean colourSummary()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "showWorldStatus",
 		name = "World status above Juna",
 		description = "Shows above Juna whether this world moves its streams green, green, green, blue, blue, blue, "
