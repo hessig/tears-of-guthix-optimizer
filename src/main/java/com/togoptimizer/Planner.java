@@ -2,7 +2,6 @@ package com.togoptimizer;
 
 import java.util.Arrays;
 import java.util.Random;
-import javax.annotation.Nullable;
 import lombok.Value;
 
 /**
@@ -28,16 +27,6 @@ final class Planner
 	// new choice this long, enough to click it, stopped it reversing in simulation and gave a player two
 	// ticks slow to react about 2 more tears a game.
 	static final int HOLD_TICKS = 4;
-	@Value
-	static class Next
-	{
-		int wall;
-		// Ticks until the highlight is expected to move to it
-		int ticks;
-	}
-
-	// How far ahead to look for the next wall
-	static final int LOOKAHEAD = 3;
 	// The six streams move on consecutive ticks, so a cycle's remaining moves all fall within this many
 	private static final int BURST_TICKS = 5;
 
@@ -92,38 +81,6 @@ final class Planner
 			}
 		}
 		return new Plan(expected, best);
-	}
-
-	/**
-	 * Where the highlight goes next if no new stream lands before then. Streams leave on a timer but land
-	 * at random, so this is only known when the next wall's blue is already there. Showing it early lets
-	 * the player click the moment the highlight moves, which in simulation was worth 5 to 10 tears a game.
-	 *
-	 * @param shownFor ticks since the shown choice was first shown
-	 * @return the next wall and when the highlight moves to it, or null if that isn't known yet
-	 */
-	@Nullable
-	Next next(TearsGame game, int shown, int shownFor, long seed)
-	{
-		for (int ahead = 1; ahead <= LOOKAHEAD; ahead++)
-		{
-			TearsGame later = game.copy(null);
-			later.tick += ahead;
-			for (int wall = 0; wall < Walls.COUNT; wall++)
-			{
-				if (later.colour[wall] != TearsGame.NONE && later.nextMove[wall] >= 0 && later.nextMove[wall] <= later.tick)
-				{
-					later.colour[wall] = TearsGame.NONE;
-				}
-			}
-			int choice = steady(shown, shownFor + ahead, plan(later, seed), STEADY_MARGIN);
-			if (choice != shown)
-			{
-				boolean known = choice >= 0 && choice != game.target && game.colour[choice] == TearsGame.BLUE;
-				return known ? new Next(choice, ahead) : null;
-			}
-		}
-		return null;
 	}
 
 	/**

@@ -25,8 +25,6 @@ class WallOverlay extends Overlay
 	private static final int TEXT_HEIGHT = 120;
 	private static final int OUTLINE_WIDTH = 2;
 	private static final int OUTLINE_FEATHER = 4;
-	private static final int NEXT_OUTLINE_WIDTH = 1;
-	private static final int NEXT_ALPHA = 110;
 
 	private final Client client;
 	private final TogOptimizerPlugin plugin;
@@ -52,12 +50,6 @@ class WallOverlay extends Overlay
 		if (plan == null || shown < 0)
 		{
 			return null;
-		}
-
-		Planner.Next next = plugin.getNext();
-		if (next != null && config.highlightBest())
-		{
-			renderNext(graphics, next);
 		}
 
 		int waitTicks = plugin.getWaitTicks();
@@ -107,22 +99,6 @@ class WallOverlay extends Overlay
 		}
 		drawText(graphics, shown, waitTicks > 0 ? "Wait " + waitTicks : "Wait", config.waitColour());
 		return null;
-	}
-
-	/**
-	 * The wall the highlight moves to next, faint so it isn't mistaken for the current one, with the ticks
-	 * until it moves there
-	 */
-	private void renderNext(Graphics2D graphics, Planner.Next next)
-	{
-		Color colour = config.highlightColour();
-		DecorativeObject wall = plugin.wallObject(next.getWall());
-		if (wall != null)
-		{
-			outlines.drawOutline(wall, NEXT_OUTLINE_WIDTH, new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), NEXT_ALPHA),
-				OUTLINE_FEATHER);
-		}
-		drawText(graphics, next.getWall(), "Next in " + next.getTicks(), colour);
 	}
 
 	private void drawText(Graphics2D graphics, int shown, String text, Color colour)

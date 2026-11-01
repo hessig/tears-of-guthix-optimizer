@@ -50,22 +50,10 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "showNext",
-		name = "Show the next wall",
-		description = "Before your stream leaves, faintly outlines the wall to go to next when its blue is already "
-			+ "there, with a countdown to when the highlight moves to it.",
-		position = 2
-	)
-	default boolean showNext()
-	{
-		return true;
-	}
-
-	@ConfigItem(
 		keyName = "highlightColour",
 		name = "Highlight colour",
 		description = "Colour of the outline and number on the best wall.",
-		position = 3
+		position = 2
 	)
 	default Color highlightColour()
 	{
@@ -77,7 +65,7 @@ public interface TogOptimizerConfig extends Config
 		name = "Wait colour",
 		description = "Colour used when the best move is to stay at your empty wall for a blue to land, with a "
 			+ "countdown of the ticks left before it's time to give up.",
-		position = 4
+		position = 3
 	)
 	default Color waitColour()
 	{
@@ -89,7 +77,7 @@ public interface TogOptimizerConfig extends Config
 		name = "Only show in the wall room",
 		description = "Hides the preview shown outside the wall room, where the walls show the plugin's advice on the "
 			+ "live streams before you play.",
-		position = 5
+		position = 4
 	)
 	default boolean onlyInRoom()
 	{

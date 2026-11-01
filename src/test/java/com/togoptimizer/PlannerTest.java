@@ -65,41 +65,6 @@ public class PlannerTest
 		assertTrue(max - min > 0.1);
 	}
 
-	@Test
-	public void theNextWallIsKnownOnceItsBlueIsAlreadyThere()
-	{
-		TearsGame game = new TearsGame();
-		game.tick = 100;
-		game.endTick = 400;
-		game.x = Walls.standX(4);
-		game.y = Walls.standY(4);
-		game.target = 4;
-		game.reaction = 2;
-		game.colour[4] = TearsGame.BLUE;
-		game.nextMove[4] = 102;
-		game.colour[3] = TearsGame.BLUE;
-		game.nextMove[3] = 115;
-		game.colour[8] = TearsGame.BLUE;
-		game.nextMove[8] = 116;
-		int[] greens = {0, 6, 7};
-		for (int i = 0; i < 3; i++)
-		{
-			game.colour[greens[i]] = TearsGame.GREEN;
-			game.nextMove[greens[i]] = 112 + i;
-		}
-		Planner planner = new Planner(50, 40);
-
-		Planner.Next next = planner.next(game, 4, Planner.HOLD_TICKS, 1);
-		// Wall 3 is next to wall 4 and its blue stays longer than the stream the player is on
-		assertEquals(3, next.getWall());
-		assertTrue(next.getTicks() >= 1 && next.getTicks() <= 2);
-
-		// With no other blue that lasts, where to go depends on where the streams land
-		game.nextMove[3] = 103;
-		game.colour[8] = TearsGame.NONE;
-		assertEquals(null, planner.next(game, 4, Planner.HOLD_TICKS, 1));
-	}
-
 	/**
 	 * The game once its blues have all moved, so each can be reached before it moves again
 	 */

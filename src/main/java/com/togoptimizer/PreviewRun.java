@@ -20,8 +20,6 @@ final class PreviewRun
 	private int shownSince;
 	@Getter
 	private int waitTicks = -1;
-	@Getter
-	private Planner.Next next;
 
 	PreviewRun(int startTick, int ticks, int startX, int startY, int reaction, Planner planner, long seed)
 	{
@@ -62,7 +60,6 @@ final class PreviewRun
 		}
 		// Worked out before the tick finishes, while the game still shows this tick's streams
 		waitTicks = Planner.waitTicksFor(player, shown);
-		next = planner.next(player, shown, tick - shownSince, seed);
 		// Moves whenever the shown wall changes, as a player following it would
 		player.request(shown);
 		player.finishTick();
