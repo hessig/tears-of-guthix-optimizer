@@ -23,6 +23,7 @@ import net.runelite.api.events.GameObjectDespawned;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
@@ -385,6 +386,25 @@ public class TogOptimizerPlugin extends Plugin
 			log.info("togoptimizer click tick={} option={} target={} id={} wall={}", client.getTickCount(),
 				event.getMenuOption(), event.getMenuTarget(), event.getId(), wall);
 		}
+	}
+
+	@Subscribe
+	public void onMenuEntryAdded(MenuEntryAdded event)
+	{
+		if ("Collect-from".equals(event.getOption()) && config.deprioritiseGreen()
+			&& onGreen(event.getActionParam0(), event.getActionParam1()))
+		{
+			// Moves it below Walk here, so a left click walks instead
+			event.getMenuEntry().setDeprioritized(true);
+		}
+	}
+
+	private boolean onGreen(int sceneX, int sceneY)
+	{
+		WorldPoint point = WorldPoint.fromScene(client.getTopLevelWorldView(), sceneX, sceneY,
+			client.getTopLevelWorldView().getPlane());
+		int wall = Walls.at(point.getX(), point.getY());
+		return wall >= 0 && tracker.colour(wall) == TearsGame.GREEN;
 	}
 
 	@Subscribe

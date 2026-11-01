@@ -85,6 +85,18 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "deprioritiseGreen",
+		name = "Don't left-click green streams",
+		description = "On a wall with a green stream, a left click walks instead of collecting. Collect-from stays in "
+			+ "the right-click menu.",
+		position = 5
+	)
+	default boolean deprioritiseGreen()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "showWorldStatus",
 		name = "World status above Juna",
 		description = "Shows above Juna whether this world moves its streams green, green, green, blue, blue, blue, "
