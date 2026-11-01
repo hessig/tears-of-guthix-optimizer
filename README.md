@@ -12,6 +12,8 @@ whether the world has the best stream order, when to enter, and when you can pla
   each one moves next.
 - **Wait.** When staying put is better, your wall is outlined in yellow with a countdown of the ticks
   left before it's time to move.
+- **Next wall.** When the wall to go to next already has its blue stream, it's faintly outlined with a
+  countdown to when the highlight moves there.
 - **Preview.** Outside the wall room, the walls show the plugin's advice on the live streams, so you can
   see how it works before playing.
 - **Stream order.** Shows above Juna whether the world moves its streams in the best order: green,
