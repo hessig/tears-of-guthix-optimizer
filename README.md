@@ -28,8 +28,8 @@ whether the world has the best stream order, when to enter, and when you can pla
   so your game starts at a good point in the stream cycle.
 - **Next game.** Shows above Juna how long until you can play again, and optionally the quest point or
   experience still needed.
-- **World suggestions** (off by default). Suggests nearby worlds with the best stream order, nearest
-  first by ping.
+- **World suggestions** (off by default). Suggests nearby worlds with the best stream order, with a
+  hotkey (Ctrl+Shift+Up) to hop to the first one.
 - **Expected tears** (off by default). Shows how many tears the highlighted wall is expected to give
   over the next 40 ticks.
 
