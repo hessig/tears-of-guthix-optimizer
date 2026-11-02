@@ -4,7 +4,9 @@ Highlights the best weeping wall in Tears of Guthix, including when to wait at y
 stream to land, using the stream mechanics described on the OSRS Wiki. Above Juna, it also shows
 whether the world has the best stream order, when to enter, and when you can play next.
 
-![The best wall outlined in blue, with Juna showing the world's stream order below](docs/room.png)
+<img src="docs/room.png" width="420" alt="The best wall outlined in blue, with Juna showing the world's stream order below">
+
+<img src="docs/wait.gif" width="640" alt="">
 
 ## Features
 
