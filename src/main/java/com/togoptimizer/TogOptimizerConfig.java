@@ -218,6 +218,19 @@ public interface TogOptimizerConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "hopLeftClick",
+		name = "Left-click Juna to hop",
+		description = "Makes Hop-to her left-click option. Juna has it when there's a world to hop to, as for the "
+			+ "hotkey.",
+		position = 7,
+		section = juna
+	)
+	default boolean hopLeftClick()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "debugLogging",
 		name = "Debug logging",
 		description = "Logs stream movements, the minigame's state and the plugin's estimates to the client log.",

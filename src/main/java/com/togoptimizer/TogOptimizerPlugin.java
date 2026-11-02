@@ -3,6 +3,7 @@ package com.togoptimizer;
 import com.google.inject.Provides;
 import java.awt.Color;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
@@ -17,6 +18,9 @@ import net.runelite.api.Client;
 import net.runelite.api.DecorativeObject;
 import net.runelite.api.GameObject;
 import net.runelite.api.GameState;
+import net.runelite.api.Menu;
+import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.Player;
 import net.runelite.api.TileObject;
 import net.runelite.api.widgets.Widget;
@@ -30,6 +34,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.api.events.VarbitChanged;
@@ -52,6 +57,7 @@ import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.ui.JagexColors;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.HotkeyListener;
@@ -84,6 +90,7 @@ public class TogOptimizerPlugin extends Plugin
 	private static final int REACTION = 2;
 	// How much lower another optimal world's ping must be to suggest hopping from an optimal world
 	static final int FASTER_BY_MS = 10;
+	private static final String HOP_OPTION = "Hop-to";
 	// Summary colours readable on each chatbox background
 	private static final GameSummary.Palette OPAQUE_PALETTE =
 		new GameSummary.Palette(new Color(0x006400), new Color(0x00339a), new Color(0xb00000));
@@ -474,12 +481,66 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		if ("Collect-from".equals(event.getOption()) && config.deprioritiseGreen()
-			&& onGreen(event.getActionParam0(), event.getActionParam1()))
+		if ("Collect-from".equals(event.getOption()))
 		{
-			// Moves it below Walk here, so a left click walks instead
-			event.getMenuEntry().setDeprioritized(true);
+			if (config.deprioritiseGreen() && onGreen(event.getActionParam0(), event.getActionParam1()))
+			{
+				// Moves it below Walk here, so a left click walks instead
+				event.getMenuEntry().setDeprioritized(true);
+			}
+			return;
 		}
+		if (event.getType() != MenuAction.GAME_OBJECT_FIRST_OPTION.getId() || event.getIdentifier() != ObjectID.TOG_JUNA)
+		{
+			return;
+		}
+		Integer target = menuHopTarget();
+		if (target != null)
+		{
+			client.getMenu().createMenuEntry(-1)
+				.setOption(HOP_OPTION)
+				.setTarget(ColorUtil.wrapWithColorTag("World " + target, JagexColors.MENU_TARGET))
+				.setType(MenuAction.RUNELITE)
+				.setIdentifier(ObjectID.TOG_JUNA)
+				.onClick(e -> hopToBestWorld());
+		}
+	}
+
+	@Subscribe
+	public void onPostMenuSort(PostMenuSort event)
+	{
+		// The menu isn't rebuilt while open, so moving entries then would move them again every frame
+		if (client.isMenuOpen())
+		{
+			return;
+		}
+		Menu menu = client.getMenu();
+		MenuEntry[] entries = menu.getMenuEntries();
+		int hop = -1;
+		int talk = -1;
+		for (int i = 0; i < entries.length; i++)
+		{
+			if (entries[i].getIdentifier() != ObjectID.TOG_JUNA)
+			{
+				continue;
+			}
+			if (entries[i].getType() == MenuAction.RUNELITE && HOP_OPTION.equals(entries[i].getOption()))
+			{
+				hop = i;
+			}
+			else if (entries[i].getType() == MenuAction.GAME_OBJECT_FIRST_OPTION)
+			{
+				talk = i;
+			}
+		}
+		if (hop < 0 || talk < 0)
+		{
+			return;
+		}
+		List<MenuEntry> moved = new ArrayList<>(Arrays.asList(entries));
+		MenuEntry entry = moved.remove(hop);
+		moved.add(hopPosition(hop, talk, entries.length, config.hopLeftClick()), entry);
+		menu.setMenuEntries(moved.toArray(new MenuEntry[0]));
 	}
 
 	private boolean onGreen(int sceneX, int sceneY)
@@ -488,6 +549,30 @@ public class TogOptimizerPlugin extends Plugin
 			client.getTopLevelWorldView().getPlane());
 		int wall = Walls.at(point.getX(), point.getY());
 		return wall >= 0 && tracker.colour(wall) == TearsGame.GREEN;
+	}
+
+	/**
+	 * Where the hop option goes once taken out of the menu, whose last entry is the left-click: on top when
+	 * it should be the left-click and Juna's first option is, otherwise just below that option.
+	 */
+	static int hopPosition(int hop, int talk, int length, boolean leftClick)
+	{
+		int below = hop < talk ? talk - 1 : talk;
+		// Juna's option on top once the hop option is out means the mouse is on her
+		return leftClick && below == length - 2 ? length - 1 : below;
+	}
+
+	/**
+	 * @return the world Hop-to on Juna would hop to, or null when there's none
+	 */
+	@Nullable
+	private Integer menuHopTarget()
+	{
+		if (!inCave() || juna == null || playerInRoom())
+		{
+			return null;
+		}
+		return suggestions.isEmpty() ? fasterWorld : suggestions.get(0);
 	}
 
 	@Subscribe
