@@ -129,6 +129,7 @@ public class TogOptimizerPlugin extends Plugin
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
 	private boolean junasLastLine;
+	private int continuedTick = -1;
 
 	// Juna's lines, worked out once a tick rather than every frame
 	@Getter
@@ -696,6 +697,7 @@ public class TogOptimizerPlugin extends Plugin
 		boolean lastLine = text != null && text.contains(EntryTiming.LAST_LINE);
 		if (junasLastLine && !lastLine)
 		{
+			continuedTick = client.getTickCount();
 			Integer offset = entryOffset();
 			ticksLate = offset == null ? null : EntryTiming.ticksLate(offset);
 			if (config.debugLogging())
@@ -800,6 +802,11 @@ public class TogOptimizerPlugin extends Plugin
 	boolean playerInRoom()
 	{
 		return client.getLocalPlayer() != null && inRoom(client.getLocalPlayer().getWorldLocation());
+	}
+
+	boolean isEntering()
+	{
+		return EntryTiming.entering(continuedTick, client.getTickCount());
 	}
 
 	/**

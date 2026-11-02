@@ -81,6 +81,15 @@ final class EntryTiming
 	}
 
 	/**
+	 * @return whether a player who continued past Juna's last line on the given tick is still being let in
+	 */
+	static boolean entering(int continuedTick, int tick)
+	{
+		int since = tick - continuedTick;
+		return continuedTick >= 0 && since >= 0 && since <= CONTINUE_TICKS;
+	}
+
+	/**
 	 * @return ticks the player entered after the best window, negative for before it, or 0 within it
 	 */
 	static int ticksLate(int entryOffset)

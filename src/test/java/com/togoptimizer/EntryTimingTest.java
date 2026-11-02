@@ -65,4 +65,15 @@ public class EntryTimingTest
 		// Continuing two ticks early enters three ticks before it moves, one before the window
 		assertEquals(-1, EntryTiming.ticksLate(EntryTiming.entryOffset(116, 103)));
 	}
+
+	@Test
+	public void continuingLetsThePlayerInUntilTheGameStarts()
+	{
+		assertEquals(true, EntryTiming.entering(100, 100));
+		assertEquals(true, EntryTiming.entering(100, 100 + EntryTiming.CONTINUE_TICKS));
+		assertEquals(false, EntryTiming.entering(100, 101 + EntryTiming.CONTINUE_TICKS));
+		assertEquals(false, EntryTiming.entering(-1, 5));
+		// The tick count restarts on a world hop
+		assertEquals(false, EntryTiming.entering(100, 3));
+	}
 }

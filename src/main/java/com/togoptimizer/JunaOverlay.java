@@ -136,7 +136,7 @@ class JunaOverlay extends Overlay
 
 		// Entry timing only matters when the player can actually play
 		boolean canPlay = unlock == null && (requirement == null || !plugin.isRequirementCertain());
-		if (config.showEntryTiming() && optimal && canPlay && !plugin.playerInRoom())
+		if (config.showEntryTiming() && optimal && canPlay && !plugin.playerInRoom() && !plugin.isEntering())
 		{
 			String cue = continueCue(plugin);
 			if (cue != null)
