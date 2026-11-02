@@ -1,5 +1,7 @@
 # Tears of Guthix Optimizer
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/hessig)
+
 Highlights the best weeping wall in Tears of Guthix, including when to wait at your wall for a blue
 stream to land, using the stream mechanics described on the OSRS Wiki. Above Juna, it also shows
 whether the world has the best stream order, when to enter, and when you can play next.
@@ -57,10 +59,6 @@ once per login. Only Jagex's servers are contacted for this.
 Turn on **Debug logging**, reproduce the problem, and include the lines containing `togoptimizer` from
 your client log (`%USERPROFILE%\.runelite\logs\client.log` on Windows, `~/.runelite/logs/client.log`
 on macOS and Linux). A short screen recording helps too.
-
-## Support
-
-<a href="https://ko-fi.com/hessig"><img src="https://storage.ko-fi.com/cdn/kofi1.png?v=3" height="36" alt="Buy me a coffee"></a>
 
 ## License
 
