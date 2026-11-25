@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.swing.SwingUtilities;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
@@ -25,7 +26,9 @@ import net.runelite.api.Player;
 import net.runelite.api.TileObject;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.CommandExecuted;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
 import net.runelite.api.events.GameObjectDespawned;
@@ -38,10 +41,12 @@ import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.WallObjectDespawned;
 import net.runelite.api.events.WallObjectSpawned;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.AnimationID;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.Notifier;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
@@ -50,6 +55,7 @@ import net.runelite.client.config.ConfigDescriptor;
 import net.runelite.client.config.ConfigItemDescriptor;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.config.Keybind;
+import net.runelite.client.config.Notification;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.WorldService;
@@ -57,10 +63,13 @@ import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
+import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.JagexColors;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.HotkeyListener;
+import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
 import net.runelite.client.util.WorldUtil;
 import net.runelite.http.api.worlds.World;
@@ -129,6 +138,22 @@ public class TogOptimizerPlugin extends Plugin
 	private ConfigManager configManager;
 
 	@Inject
+	private WeeklyReminder weeklyReminder;
+
+	private final LoginReminder loginReminder = new LoginReminder();
+
+	@Inject
+	private BowlReward bowlReward;
+
+	@Inject
+	private ClientToolbar clientToolbar;
+	private volatile TearsPanel sidebar;
+	private NavigationButton navigation;
+
+	@Inject
+	private Notifier notifier;
+
+	@Inject
 	private KeyManager keyManager;
 
 	@Inject
@@ -152,12 +177,11 @@ public class TogOptimizerPlugin extends Plugin
 		}
 	};
 
-	// Per-account records of when the next game unlocks and the experience when the last one ended
-	private static final String UNLOCK_AT_KEY = "unlockAt";
-	private static final String XP_AT_LAST_GAME_KEY = "xpAtLastGame";
 	private int lastTears;
-	// The reward experience lands as a game ends, so it's recorded a few ticks later
-	private int recordXpTick = -1;
+	@Getter
+	@Nullable
+	private String rewardLine;
+
 	private String lastDialogue = "";
 	// Whether Juna's last line, the one that lets the player in, is on screen
 	@Getter
@@ -243,6 +267,15 @@ public class TogOptimizerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		loginReminder.start(client.getGameState());
+		sidebar = new TearsPanel(() -> clientThread.invokeLater(this::refreshSidebar));
+		navigation = NavigationButton.builder()
+			.tooltip("Tears of Guthix Optimizer")
+			.icon(ImageUtil.loadImageResource(TogOptimizerPlugin.class, "sidebar.png"))
+			.priority(6)
+			.panel(sidebar)
+			.build();
+		clientToolbar.addNavigation(navigation);
 		clientThread.invoke(this::checkHotkeyConflict);
 		overlayManager.add(wallOverlay);
 		overlayManager.add(junaOverlay);
@@ -252,6 +285,10 @@ public class TogOptimizerPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		sidebar = null;
+		clientToolbar.removeNavigation(navigation);
+		navigation = null;
+		clearVisitSession();
 		overlayManager.remove(wallOverlay);
 		overlayManager.remove(junaOverlay);
 		overlayManager.remove(continueOverlay);
@@ -300,6 +337,11 @@ public class TogOptimizerPlugin extends Plugin
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		GameState state = event.getGameState();
+		loginReminder.onGameStateChanged(state);
+		if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING || state == GameState.CONNECTION_LOST)
+		{
+			clearVisitSession();
+		}
 		if (state == GameState.LOADING || state == GameState.HOPPING || state == GameState.LOGIN_SCREEN)
 		{
 			// The streams are sent again after a load, with no way to tell how long they have left
@@ -319,6 +361,39 @@ public class TogOptimizerPlugin extends Plugin
 			gameStartTick = -1;
 			record = new GameRecord();
 		}
+	}
+
+	private void clearVisitSession()
+	{
+		weeklyReminder.resetSession();
+		bowlReward.reset();
+		lastTears = 0;
+		lastDialogue = "";
+		unlockAt = null;
+		requirement = null;
+		requirementCertain = false;
+		rewardLine = null;
+		TearsPanel panel = sidebar;
+		if (panel != null)
+		{
+			SwingUtilities.invokeLater(() -> panel.update(WeeklyReminder.Summary.NO_PROFILE, null, List.of()));
+		}
+	}
+
+	private void refreshSidebar()
+	{
+		TearsPanel panel = sidebar;
+		if (panel == null || !panel.isPanelActive())
+		{
+			return;
+		}
+		WeeklyReminder.Summary reset = weeklyReminder.summary();
+		boolean canPreview = reset != WeeklyReminder.Summary.NO_PROFILE
+			&& client.getWorldType().contains(net.runelite.api.WorldType.MEMBERS);
+		boolean live = canPreview && playerInRoom() && client.getVarbitValue(VarbitID.DTTD_COLLECTING_TEARS) == 0;
+		BowlReward.Estimate estimate = canPreview ? bowlReward.projection(live, null, false) : null;
+		List<BowlHistory.Entry> history = reset.canRefresh ? bowlReward.history() : List.of();
+		SwingUtilities.invokeLater(() -> panel.update(reset, estimate, history));
 	}
 
 	@Subscribe
@@ -580,12 +655,8 @@ public class TogOptimizerPlugin extends Plugin
 	{
 		if (event.getVarbitId() == VarbitID.TOG_TEARS_COLLECTED)
 		{
-			// The count resets when the game ends and the reward is given
-			if (event.getValue() == 0 && lastTears > 0)
-			{
-				gameEnded();
-			}
 			lastTears = event.getValue();
+			bowlReward.tearsChanged(lastTears);
 		}
 
 		// The minigame's own state: whether the player is collecting, their tears, and the quest points needed
@@ -607,11 +678,23 @@ public class TogOptimizerPlugin extends Plugin
 	public void onGameTick(GameTick event)
 	{
 		continueHop();
-		if (recordXpTick >= 0 && client.getTickCount() >= recordXpTick)
+		bowlReward.checkReward();
+		if (weeklyReminder.syncOpenJournal())
 		{
-			recordXpTick = -1;
-			configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, client.getOverallExperience());
+			chat("Synced from your Tears of Guthix quest journal.");
 		}
+		Notification reminder = config.readyReminder();
+		String alert = weeklyReminder.check(reminder.isEnabled());
+		String login = loginReminder.check(config.loginResetFrequency(), client, configManager, weeklyReminder);
+		if (alert != null)
+		{
+			notifier.notify(reminder, alert);
+		}
+		else if (login != null)
+		{
+			notifier.notify(Notification.ON, login);
+		}
+		refreshSidebar();
 		// The summary comes as the game's time runs out, while the player is led out of the room
 		if (record.start >= 0 && !record.isOver() && client.getTickCount() >= record.start + record.length + GameRecord.END_LAG)
 		{
@@ -623,6 +706,7 @@ public class TogOptimizerPlugin extends Plugin
 		setHotkeyActive(inCave());
 		if (!inCave())
 		{
+			rewardLine = null;
 			plan = null;
 			shownBest = -1;
 			waitTicks = -1;
@@ -632,6 +716,14 @@ public class TogOptimizerPlugin extends Plugin
 
 		readDialogue();
 		updateJunaLines();
+		boolean questBowl = client.getVarbitValue(VarbitID.DTTD_COLLECTING_TEARS) != 0;
+		boolean inBowlRoom = !questBowl && playerInRoom();
+		if (inBowlRoom)
+		{
+			bowlReward.sampleRoom();
+		}
+		rewardLine = config.showReward() && juna != null && !questBowl
+			? bowlReward.estimate(inBowlRoom, null, false) : null;
 
 		// Only contact the third-party site at Tears of Guthix itself: Juna only exists in its cave, while
 		// the map region also covers part of the Lumbridge Swamp Caves
@@ -787,9 +879,9 @@ public class TogOptimizerPlugin extends Plugin
 
 	private void updateJunaLines()
 	{
-		unlockAt = readUnlockAt();
-		requirement = readRequirement();
-		requirementCertain = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY) != null;
+		unlockAt = weeklyReminder.nextUnlock();
+		requirement = weeklyReminder.progressRequirement();
+		requirementCertain = weeklyReminder.requirementCertain();
 		boolean online = config.fetchWorldList() && juna != null;
 		boolean optimal = StreamTracker.OPTIMAL_ORDER.equals(worldOrder());
 		suggestions = online && !optimal ? suggestedWorlds() : List.of();
@@ -912,6 +1004,7 @@ public class TogOptimizerPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
+		weeklyReminder.onChat(event);
 		if (event.getType() == ChatMessageType.GAMEMESSAGE
 			&& event.getMessage().equals("Please finish what you're doing before using the World Switcher."))
 		{
@@ -986,14 +1079,61 @@ public class TogOptimizerPlugin extends Plugin
 		return key == null || Keybind.NOT_SET.equals(key) ? null : key.toString();
 	}
 
-	private void gameEnded()
+	@Subscribe
+	public void onAnimationChanged(AnimationChanged event)
 	{
-		long now = System.currentTimeMillis();
-		configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY, Eligibility.unlockAfterGame(now));
-		recordXpTick = client.getTickCount() + 3;
-		if (config.debugLogging())
+		Player player = client.getLocalPlayer();
+		if (player != null && event.getActor() == player && player.getAnimation() == AnimationID.TOG_DRINK_BOWL
+			&& inCave() && configManager.getRSProfileKey() != null && !RewardPreview.specialWorld(client)
+			&& client.getVarbitValue(VarbitID.DTTD_COLLECTING_TEARS) == 0)
 		{
-			log.info("togoptimizer game ended tick={} unlockAt={}", client.getTickCount(), Eligibility.unlockAfterGame(now));
+			weeklyReminder.gameEnded();
+			bowlReward.drank();
+		}
+	}
+
+	@Subscribe
+	public void onCommandExecuted(CommandExecuted event)
+	{
+		String command = event.getCommand();
+		if (!"togstatus".equalsIgnoreCase(command) && !"togxp".equalsIgnoreCase(command))
+		{
+			return;
+		}
+		String profile = configManager.getRSProfileKey();
+		String[] args = event.getArguments();
+		// Chat commands can be dispatched inside a client script. Quest lookups run scripts too.
+		clientThread.invokeLater(() ->
+		{
+			if (client.getGameState() == GameState.LOGGED_IN && profile != null
+				&& profile.equals(configManager.getRSProfileKey()))
+			{
+				showCommand(command, args);
+			}
+		});
+	}
+
+	private void showCommand(String command, String[] args)
+	{
+		if ("togstatus".equalsIgnoreCase(command))
+		{
+			String status = weeklyReminder.command(args);
+			if (status != null)
+			{
+				chat(status);
+			}
+		}
+		else
+		{
+			if (args.length > 1 || (args.length == 1 && !args[0].matches("[0-9]{1,4}")))
+			{
+				chat("Use ::togxp or ::togxp TEARS (0 to 9999).");
+				return;
+			}
+			Integer count = args.length == 0 ? null : Integer.valueOf(args[0]);
+			boolean inBowlRoom = playerInRoom() && client.getVarbitValue(VarbitID.DTTD_COLLECTING_TEARS) == 0;
+			String estimate = bowlReward.estimate(inBowlRoom, count, true);
+			chat(estimate == null ? "Reward estimate unavailable on this character or world." : estimate);
 		}
 	}
 
@@ -1035,8 +1175,7 @@ public class TogOptimizerPlugin extends Plugin
 		Integer days = Eligibility.daysFromJuna(text);
 		if (days != null)
 		{
-			configManager.setRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY,
-				Eligibility.unlockInDays(days, System.currentTimeMillis()));
+			weeklyReminder.waitDays(days);
 		}
 	}
 
@@ -1049,27 +1188,6 @@ public class TogOptimizerPlugin extends Plugin
 			return null;
 		}
 		return Text.removeTags(widget.getText().replace("<br>", " "));
-	}
-
-	/**
-	 * @return when this account can next play, or null if unknown or already possible
-	 */
-	@Nullable
-	private Long readUnlockAt()
-	{
-		Long unlock = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, UNLOCK_AT_KEY, Long.class);
-		return unlock == null || unlock <= System.currentTimeMillis() ? null : unlock;
-	}
-
-	/**
-	 * @return the quest point or experience still needed to play again, or null if met
-	 */
-	@Nullable
-	private String readRequirement()
-	{
-		Long xpAtLastGame = configManager.getRSProfileConfiguration(TogOptimizerConfig.GROUP, XP_AT_LAST_GAME_KEY, Long.class);
-		return Eligibility.requirement(client.getVarbitValue(VarbitID.TOG_QP_BEFORE_RETURN),
-			client.getVarpValue(VarPlayerID.QP), client.getOverallExperience(), xpAtLastGame);
 	}
 
 	private static String describe(@Nullable Planner.Plan plan)

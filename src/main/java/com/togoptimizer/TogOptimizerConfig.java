@@ -8,6 +8,7 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Keybind;
+import net.runelite.client.config.Notification;
 
 @ConfigGroup(TogOptimizerConfig.GROUP)
 public interface TogOptimizerConfig extends Config
@@ -228,6 +229,65 @@ public interface TogOptimizerConfig extends Config
 	default boolean hopLeftClick()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+		keyName = "showReward",
+		name = "Show XP reward",
+		description = "Shows the skill and estimated XP above Juna using your last bowl before a run and your "
+			+ "current tears during it. Use ::togxp anywhere to check.",
+		position = 8,
+		section = juna
+	)
+	default boolean showReward()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "readyReminder",
+		name = "Weekly reminder",
+		description = "Sends a RuneLite notification when you can play again. Open the Tears of Guthix "
+			+ "quest journal to sync your weekly reset.",
+		position = 9,
+		section = juna
+	)
+	default Notification readyReminder()
+	{
+		return Notification.OFF;
+	}
+
+	enum LoginResetFrequency
+	{
+		OFF("Off"),
+		DAILY("Once per day"),
+		EVERY_LOGIN("Every login");
+
+		private final String label;
+
+		LoginResetFrequency(String label)
+		{
+			this.label = label;
+		}
+
+		@Override
+		public String toString()
+		{
+			return label;
+		}
+	}
+
+	@ConfigItem(
+		keyName = "loginResetFrequency",
+		name = "Reset notification on login",
+		description = "Show your Tears of Guthix reset at login, once per UTC day per character or on every login. "
+			+ "Uses RuneLite's notification settings, including Send notifications when focused.",
+		position = 10,
+		section = juna
+	)
+	default LoginResetFrequency loginResetFrequency()
+	{
+		return LoginResetFrequency.OFF;
 	}
 
 	@ConfigItem(

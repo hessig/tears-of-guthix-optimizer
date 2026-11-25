@@ -77,6 +77,59 @@ final class Eligibility
 		return hours > 0 ? hours + "h " + mins + "m" : mins + "m";
 	}
 
+	static int journalXp(String text)
+	{
+		if (!text.matches("(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)"))
+		{
+			throw new IllegalArgumentException("Invalid XP amount");
+		}
+		return Integer.parseInt(text.replace(",", ""));
+	}
+
+	/** A zero XP requirement may mean the player earned a quest point. The old XP total is then unknown. */
+	@Nullable
+	static Long journalBaseline(int days, int xpRemaining, long totalXp)
+	{
+		if (days < 0 || days > DAYS || xpRemaining < 0 || xpRemaining > XP_NEEDED || totalXp < 0)
+		{
+			throw new IllegalArgumentException("Invalid journal values");
+		}
+		if (xpRemaining == 0)
+		{
+			return null;
+		}
+		long baseline = totalXp - (XP_NEEDED - xpRemaining);
+		if (baseline < 0)
+		{
+			throw new IllegalArgumentException("Journal gain exceeds total XP");
+		}
+		return baseline;
+	}
+
+	@Nullable
+	static String trackedRequirement(boolean knownVisit, int qpTarget, int qp, long xp, @Nullable Long baseline)
+	{
+		if (baseline != null && (baseline < 0 || baseline > xp))
+		{
+			baseline = null;
+		}
+		if (progressMet(qpTarget, qp, xp, baseline))
+		{
+			return null;
+		}
+		if (knownVisit && qpTarget <= 0)
+		{
+			// A date alone doesn't establish progress. The game can also leave its QP varbit unset.
+			return "Check your quest journal for the remaining XP or quest point";
+		}
+		return requirement(qpTarget, qp, xp, baseline);
+	}
+
+	static boolean progressMet(int qpTarget, int qp, long xp, @Nullable Long baseline)
+	{
+		return (qpTarget > 0 && qp >= qpTarget) || (baseline != null && baseline >= 0 && xp - baseline >= XP_NEEDED);
+	}
+
 	/**
 	 * @param qpRequired the quest points needed to play again, from the game; 0 if there's no requirement
 	 * @param xpAtLastGame total experience when the last game ended, or null if the plugin didn't see it

@@ -12,6 +12,15 @@ whether the world has the best stream order, when to enter, and when you can pla
 
 ## Features
 
+- **Sidebar.** Click the blue stream icon to see your next reset, when its data was last updated,
+  and the skill and XP predicted for your next bowl. Times are local. Hover over the reset date
+  for UTC. Open **Quest List → Tears of Guthix** to refresh the data, even if the date is unchanged.
+- **Bowl reward and history.** Before a run, the estimate uses the tears from your last recorded
+  bowl and the rate for your current lowest eligible skill. If only the last XP award is available,
+  it uses that amount as a guide. During a run the estimate follows your live bowl. Use the
+  history dropdown to see the date, skill and XP of earlier runs recorded on this character.
+  Older installations that saved only a tear count can use that count for the estimate. Recording
+  the actual XP and skill starts with runs seen by this version.
 - **Best wall.** Outlines the stream to collect from, worked out from where every stream is and when
   each one moves next.
 - **Wait.** When staying put is better, your wall is outlined in yellow with a countdown of the ticks
@@ -30,6 +39,18 @@ whether the world has the best stream order, when to enter, and when you can pla
   so your game starts at a good point in the stream cycle.
 - **Next game.** Shows above Juna how long until you can play again, and optionally the quest point or
   experience still needed.
+- **Weekly reminder** (off by default). Turn this on in the Juna settings for a RuneLite notification
+  when you can play again. Enter `::togstatus` anywhere to check your character's weekly wait and XP
+  or quest point progress.
+- **Reset notification on login** (off by default). Under **Juna**, choose **Once per day** for
+  the first login per character each UTC day, or **Every login**. The notification includes your
+  reset time and remaining requirements. With no saved reset, it prompts you to open the journal.
+  World hops keep the same login. To see desktop alerts while the game has focus, enable
+  **Send notifications when focused** in RuneLite's notification settings.
+- **XP reward.** Shows the skill Juna would train and the XP per tear. After a tracked run it estimates
+  the reward for matching your previous bowl if the final count was clear. During a run it uses the
+  tears currently in your bowl.
+  Enter `::togxp` to check from anywhere, or `::togxp 150` for an estimate at 150 tears.
 - **World suggestions** (off by default). Suggests nearby worlds with the best stream order. A hotkey
   (Ctrl+Shift+Up) or Juna's Hop-to option hops to the first one, and Hop-to can be made her left-click.
 - **Expected tears** (off by default). Shows how many tears the highlighted wall is expected to give
@@ -43,6 +64,22 @@ The plugin tracks every stream, plays out possible futures from the current mome
 the choice that collects the most tears on average. Walking and start-up times were measured in game.
 
 It works alongside RuneLite's built-in Tears of Guthix plugin, so its stream timers can stay on.
+
+## Tracking a previous visit
+
+The plugin records a visit when your character drinks the bowl. If you played on mobile or installed
+the plugin after your last run, open **Quest List → Tears of Guthix** on a regular members' world.
+The plugin reads the journal and updates this character's weekly reset and XP or quest point progress.
+You'll see a chat confirmation even if the sidebar is closed. You can open the journal again after
+another mobile visit. Journal sync works with online world lookup and notifications turned off.
+
+You can also enter the remaining days and XP manually with `::togstatus sync 3 25000`, using zero
+for a requirement you've met. If you only know the UTC date of your visit, use
+`::togstatus last YYYY-MM-DD`.
+
+XP previews apply to ordinary OSRS worlds and include skill unlocks, the hard Lumbridge & Draynor
+Diary bonus and the 200 million XP cap. RuneLite reports whole skill XP, so a fractional tie can
+affect which skill is predicted.
 
 ## Online world list
 

@@ -60,4 +60,49 @@ public class EligibilityTest
 		// Without the experience at the last game, the player may already be able to play
 		assertEquals("May need 2 more quest points or 100,000 XP", Eligibility.requirement(324, 322, 0, null));
 	}
+
+	@Test
+	public void syncUsesRemainingXpAndSupportsTotalsAboveTwoBillion()
+	{
+		int remaining = Eligibility.journalXp("25,000");
+		long total = 3_000_000_000L;
+		Long baseline = Eligibility.journalBaseline(3, remaining, total);
+		assertEquals(Long.valueOf(total - 75_000), baseline);
+		assertEquals("Needs 1 more quest point or 1 XP", Eligibility.trackedRequirement(true, 126, 125, total + 24_999, baseline));
+		assertNull(Eligibility.trackedRequirement(true, 126, 125, total + 25_000, baseline));
+		assertNull(Eligibility.trackedRequirement(true, 126, 126, total, baseline));
+		// The journal can confirm progress without revealing which of XP and QP qualified the player.
+		assertNull(Eligibility.journalBaseline(0, 0, 10_000));
+	}
+
+	@Test
+	public void anExpiredDateAloneDoesNotClaimReadiness()
+	{
+		String unknown = "Check your quest journal for the remaining XP or quest point";
+		assertEquals(unknown, Eligibility.trackedRequirement(true, 0, 230, 1_000_000, null));
+		assertEquals(unknown, Eligibility.trackedRequirement(true, 0, 230, 1_000_000, 1_100_000L));
+		assertNull(Eligibility.trackedRequirement(true, 0, 230, 1_100_000, 1_000_000L));
+		// Legacy entries can use either the game's QP target or the old saved XP baseline.
+		assertNull(Eligibility.trackedRequirement(true, 230, 230, 1_000_000, null));
+		assertEquals("May need 1 more quest point or 100,000 XP",
+			Eligibility.trackedRequirement(true, 231, 230, 1_000_000, null));
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void rejectsMalformedJournalAmount()
+	{
+		Eligibility.journalXp("5,0");
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void rejectsImpossibleJournalBaseline()
+	{
+		Eligibility.journalBaseline(2, 1, 1_000);
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void rejectsImpossibleJournalDays()
+	{
+		Eligibility.journalBaseline(8, 0, 1_000);
+	}
 }

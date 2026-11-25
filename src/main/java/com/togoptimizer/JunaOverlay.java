@@ -156,6 +156,12 @@ class JunaOverlay extends Overlay
 			colours.add(plugin.isRequirementCertain() ? Color.ORANGE : Color.LIGHT_GRAY);
 		}
 
+		if (config.showReward() && plugin.getRewardLine() != null)
+		{
+			texts.add(plugin.getRewardLine());
+			colours.add(Color.WHITE);
+		}
+
 		// Entry timing only matters when the player can actually play
 		boolean canPlay = unlock == null && (requirement == null || !plugin.isRequirementCertain());
 		if (config.showEntryTiming() && optimal && canPlay && !plugin.playerInRoom() && !plugin.isEntering())
